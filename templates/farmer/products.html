@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}My Products{% endblock %}
+{% block page_title %}My Products{% endblock %}
+{% block content %}
+<div class="page-actions">
+  <a href="{{ url_for('farmer.product_form') }}" class="btn btn-primary">+ Add Product</a>
+</div>
+{% if not products %}
+<div class="empty-state"><div class="empty-icon">🌾</div><h3>No products yet</h3></div>
+{% else %}
+<div class="manage-list">
+  {% for p in products %}
+  <div class="manage-card">
+    <div class="manage-img">
+      {% if p.image_path %}<img src="{{ url_for('static', filename=p.image_path) }}" alt="{{ p.name }}">
+      {% else %}<span>🌿</span>{% endif %}
+    </div>
+    <div class="manage-info">
+      <div class="manage-name">{{ p.name }}</div>
+      <div class="muted">{{ p.cat_name or 'General' }} · {{ p.unit }}</div>
+      <div class="manage-price">₱{{ "%.2f"|format(p.price|float) }}</div>
+      <div class="manage-stock {% if p.quantity < 10 %}low{% endif %}">Stock: {{ p.quantity }}</div>
+    </div>
+    <div class="manage-actions">
+      <span class="status-pill status-{{ p.status }}">{{ p.status }}</span>
+      <a href="{{ url_for('farmer.product_form', pid=p.id) }}" class="btn btn-sm btn-outline">Edit</a>
+      <form method="post" action="{{ url_for('farmer.product_delete', pid=p.id) }}" onsubmit="return confirm('Delete?')">
+        <button type="submit" class="btn btn-sm btn-danger">Del</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}My Profile{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block content %}
+<div class="profile-header">
+  <div class="profile-avatar">{{ current_user.full_name[0].upper() }}</div>
+  <div class="profile-name">{{ current_user.full_name }}</div>
+  <div class="profile-role">🛒 {{ current_user.role|capitalize }}</div>
+</div>
+
+<div class="info-card">
+  <h3>Edit Profile</h3>
+  <form method="post">
+    <input type="hidden" name="lat" id="lat" value="{{ user.lat or '' }}">
+    <input type="hidden" name="lng" id="lng" value="{{ user.lng or '' }}">
+    <div class="field"><label>Phone</label>
+      <input type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="09XXXXXXXXX">
+    </div>
+    <div class="field"><label>Delivery Address</label>
+      <textarea name="address" id="address" rows="2" placeholder="Your full address">{{ user.address or '' }}</textarea>
+    </div>
+
+    <!-- Location picker map -->
+    {% with lat_field='lat', lng_field='lng', addr_field='address', saved_lat=user.lat, saved_lng=user.lng %}
+      {% include 'shared/location_picker.html' %}
+    {% endwith %}
+
+    <button type="submit" class="btn btn-primary btn-full" style="margin-top:1rem">💾 Save Profile</button>
+  </form>
+</div>
+
+<div class="info-card">
+  <h3>Change Password</h3>
+  <form method="post" action="{{ url_for('buyer.change_password') }}">
+    <div class="field"><label>Current Password</label>
+      <input type="password" name="current_password" required placeholder="••••••••">
+    </div>
+    <div class="field"><label>New Password</label>
+      <input type="password" name="new_password" required placeholder="Min. 6 characters" minlength="6">
+    </div>
+    <button type="submit" class="btn btn-outline btn-full">Update Password</button>
+  </form>
+</div>
+
+<div class="info-card">
+  <h3>Account Info</h3>
+  <div class="info-row"><span>Email</span><span>{{ user.email }}</span></div>
+  <div class="info-row"><span>Member Since</span><span>{{ user.created_at|dt('%b %d, %Y') }}</span></div>
+  {% if user.lat and user.lng %}
+  <div class="info-row"><span>Location</span><span class="lp-saved-badge">📍 Exact location saved</span></div>
+  {% else %}
+  <div class="info-row"><span>Location</span><span style="color:#F57F17">⚠️ No location set</span></div>
+  {% endif %}
+</div>
+
+<a href="{{ url_for('auth.logout') }}" class="btn btn-danger btn-full" style="margin:1rem 0">Logout</a>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Driver Profile{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block content %}
+<div class="profile-header">
+  <div class="profile-avatar">{{ current_user.full_name[0].upper() }}</div>
+  <div class="profile-name">{{ current_user.full_name }}</div>
+  <div class="profile-role">🚚 Driver</div>
+</div>
+
+<div class="info-card">
+  <h3>Edit Profile</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="update_profile">
+    <div class="field"><label>Phone</label>
+      <input type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="09XXXXXXXXX">
+    </div>
+    <div class="field"><label>Availability</label>
+      <select name="availability">
+        {% for s, label in [('available','🟢 Available'),('busy','🟡 Busy'),('offline','🔴 Offline')] %}
+        <option value="{{ s }}" {{ 'selected' if profile and profile.availability == s }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-full">Save Changes</button>
+  </form>
+</div>
+
+<div class="info-card">
+  <h3>Change Password</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="change_password">
+    <div class="field"><label>Current Password</label>
+      <input type="password" name="current_password" required placeholder="••••••••">
+    </div>
+    <div class="field"><label>New Password</label>
+      <input type="password" name="new_password" required placeholder="Min. 6 characters" minlength="6">
+    </div>
+    <button type="submit" class="btn btn-outline btn-full">Update Password</button>
+  </form>
+</div>
+
+<div class="info-card">
+  <h3>Vehicle Info</h3>
+  <div class="info-row"><span>Vehicle Type</span><span>{{ profile.vehicle_type if profile else '—' }}</span></div>
+  <div class="info-row"><span>License No.</span><span>{{ profile.license_number if profile else '—' }}</span></div>
+  <div class="info-row"><span>Email</span><span>{{ user.email }}</span></div>
+</div>
+
+<a href="{{ url_for('auth.logout') }}" class="btn btn-danger btn-full" style="margin:1rem 0">Logout</a>
+{% endblock %}

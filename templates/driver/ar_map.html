@@ -1,0 +1,548 @@
+{% extends 'base.html' %}
+{% block title %}AR Navigation – Order #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block page_title %}AR Navigation{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('driver.delivery_detail', oid=order.id) }}" class="back-btn">‹</a>
+<span class="app-title">AR Navigation</span>
+{% endblock %}
+{% block bottom_nav %}{% endblock %}
+
+{% block content_class %}ar-page{% endblock %}
+
+{% block content %}
+<!-- AR Viewport -->
+<div id="arContainer" class="ar-container">
+
+  <!-- Camera feed -->
+  <video id="camFeed" class="ar-camera" autoplay playsinline muted></video>
+
+  <!-- Canvas overlay for AR elements -->
+  <canvas id="arCanvas" class="ar-canvas"></canvas>
+
+  <!-- Top HUD -->
+  <div class="ar-hud-top">
+    <div class="ar-order-badge">Order #{{ '%05d'|format(order.id) }}</div>
+    <div class="ar-status" id="arStatus">Initializing GPS...</div>
+  </div>
+
+  <!-- Direction card -->
+  <div class="ar-direction-card" id="dirCard">
+    <div class="ar-dir-icon" id="dirIcon">↑</div>
+    <div class="ar-dir-info">
+      <div class="ar-dir-instruction" id="dirInstruction">Getting route...</div>
+      <div class="ar-dir-distance" id="dirDistance">—</div>
+    </div>
+  </div>
+
+  <!-- Destination info -->
+  <div class="ar-dest-card">
+    <div class="ar-dest-icon">📍</div>
+    <div class="ar-dest-info">
+      <div class="ar-dest-label">Delivering to</div>
+      <div class="ar-dest-name">{{ order.buyer_name }}</div>
+      <div class="ar-dest-addr">{{ order.shipping_address }}</div>
+    </div>
+    <a href="tel:{{ order.buyer_phone }}" class="ar-call-btn">📞</a>
+  </div>
+
+  <!-- Distance to destination -->
+  <div class="ar-eta-bar">
+    <div class="ar-eta-item">
+      <span class="ar-eta-label">Distance</span>
+      <span class="ar-eta-val" id="totalDist">—</span>
+    </div>
+    <div class="ar-eta-divider"></div>
+    <div class="ar-eta-item">
+      <span class="ar-eta-label">ETA</span>
+      <span class="ar-eta-val" id="etaVal">—</span>
+    </div>
+    <div class="ar-eta-divider"></div>
+    <div class="ar-eta-item">
+      <span class="ar-eta-label">Speed</span>
+      <span class="ar-eta-val" id="speedVal">0 km/h</span>
+    </div>
+  </div>
+
+  <!-- Camera toggle -->
+  <button class="ar-cam-toggle" id="camToggle" onclick="toggleCamera()">📷</button>
+
+  <!-- Map fallback toggle -->
+  <button class="ar-map-toggle" onclick="toggleMapView()">🗺️</button>
+
+  <!-- No camera overlay -->
+  <div class="ar-no-cam" id="noCam" style="display:none">
+    <div class="ar-no-cam-bg"></div>
+    <div class="ar-compass-wrap">
+      <canvas id="compassCanvas" width="200" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Mini map -->
+  <div id="miniMap" class="ar-mini-map" style="display:none">
+    <div id="leafletMap" style="width:100%;height:100%"></div>
+  </div>
+
+</div>
+
+<!-- Delivered button (shown when close enough) -->
+<div class="ar-deliver-bar" id="deliverBar" style="display:none">
+  <form method="post" action="{{ url_for('driver.update_delivery', oid=order.id) }}">
+    <input type="hidden" name="status" value="delivered">
+    <input type="hidden" name="note" value="Delivered via AR Navigation">
+    <button type="submit" class="btn btn-primary btn-full btn-lg ar-deliver-btn">
+      ✅ Mark as Delivered
+    </button>
+  </form>
+</div>
+
+<!-- Leaflet for mini-map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const DEST_ADDRESS = {{ order.shipping_address | tojson }};
+const ORDER_STATUS = {{ order.status | tojson }};
+
+let destCoords   = null;   // {lat, lng}
+let driverCoords = null;   // {lat, lng}
+let routeSteps   = [];
+let currentStep  = 0;
+let heading      = 0;
+let cameraOn     = false;
+let mapView      = false;
+let leafletMap   = null;
+let driverMarker = null;
+let destMarker   = null;
+let routeLine    = null;
+let watchId      = null;
+
+// ── Geocode destination via Nominatim ──────────────────────
+async function geocodeAddress(address) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+  try {
+    const res  = await fetch(url, {headers: {'Accept-Language': 'en'}});
+    const data = await res.json();
+    if (data.length > 0) {
+      return {lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon)};
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ── Get route from OSRM (free) ─────────────────────────────
+async function getRoute(from, to) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?steps=true&geometries=geojson&overview=full`;
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.code === 'Ok' && data.routes.length > 0) {
+      return data.routes[0];
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ── Haversine distance (meters) ────────────────────────────
+function haversine(a, b) {
+  const R = 6371000;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+
+// ── Bearing from A to B (degrees) ─────────────────────────
+function bearing(a, b) {
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function formatDist(m) {
+  return m >= 1000 ? (m/1000).toFixed(1)+' km' : Math.round(m)+' m';
+}
+
+function formatETA(seconds) {
+  if (seconds < 60) return '<1 min';
+  const m = Math.round(seconds/60);
+  return m < 60 ? m+' min' : Math.floor(m/60)+'h '+(m%60)+'m';
+}
+
+// ── Turn arrow from OSRM modifier ─────────────────────────
+function stepArrow(maneuver) {
+  if (!maneuver) return '↑';
+  const t = maneuver.type || '';
+  const m = maneuver.modifier || '';
+  if (t === 'arrive') return '🏁';
+  if (t === 'depart') return '🚀';
+  if (m.includes('left'))  return m.includes('sharp') ? '↰' : m.includes('slight') ? '↖' : '←';
+  if (m.includes('right')) return m.includes('sharp') ? '↱' : m.includes('slight') ? '↗' : '→';
+  if (m === 'uturn') return '↩';
+  return '↑';
+}
+
+// ── Camera ─────────────────────────────────────────────────
+async function startCamera() {
+  const video = document.getElementById('camFeed');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}}
+    });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('noCam').style.display = 'none';
+    cameraOn = true;
+  } catch(e) {
+    video.style.display = 'none';
+    document.getElementById('noCam').style.display = 'flex';
+    cameraOn = false;
+  }
+}
+
+function toggleCamera() {
+  const video = document.getElementById('camFeed');
+  if (cameraOn) {
+    const stream = video.srcObject;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    video.style.display = 'none';
+    document.getElementById('noCam').style.display = 'flex';
+    cameraOn = false;
+  } else {
+    startCamera();
+  }
+}
+
+// ── Mini map ───────────────────────────────────────────────
+function toggleMapView() {
+  mapView = !mapView;
+  document.getElementById('miniMap').style.display = mapView ? 'block' : 'none';
+  if (mapView && !leafletMap && destCoords) initLeaflet();
+}
+
+function initLeaflet() {
+  const center = driverCoords || destCoords;
+  leafletMap = L.map('leafletMap').setView([center.lat, center.lng], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(leafletMap);
+
+  if (destCoords) {
+    destMarker = L.marker([destCoords.lat, destCoords.lng], {
+      icon: L.divIcon({className:'', html:'<div style="font-size:1.5rem">📍</div>', iconAnchor:[12,24]})
+    }).addTo(leafletMap).bindPopup('Delivery destination');
+  }
+  if (driverCoords) {
+    driverMarker = L.marker([driverCoords.lat, driverCoords.lng], {
+      icon: L.divIcon({className:'', html:'<div style="font-size:1.5rem">🚚</div>', iconAnchor:[12,24]})
+    }).addTo(leafletMap);
+  }
+}
+
+function updateLeaflet() {
+  if (!leafletMap || !driverCoords) return;
+  if (driverMarker) {
+    driverMarker.setLatLng([driverCoords.lat, driverCoords.lng]);
+  } else {
+    driverMarker = L.marker([driverCoords.lat, driverCoords.lng], {
+      icon: L.divIcon({className:'', html:'<div style="font-size:1.5rem">🚚</div>', iconAnchor:[12,24]})
+    }).addTo(leafletMap);
+  }
+  leafletMap.panTo([driverCoords.lat, driverCoords.lng]);
+}
+
+// ── AR Canvas drawing ──────────────────────────────────────
+function drawAR() {
+  const canvas = document.getElementById('arCanvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!driverCoords || !destCoords) return;
+
+  const dist = haversine(driverCoords, destCoords);
+  const bear = bearing(driverCoords, destCoords);
+  const relBear = ((bear - heading) + 360) % 360;
+  const rad  = relBear * Math.PI / 180;
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height * 0.45;
+  const r  = Math.min(canvas.width, canvas.height) * 0.28;
+
+  // Outer glow ring
+  const grad = ctx.createRadialGradient(cx, cy, r*0.6, cx, cy, r*1.1);
+  grad.addColorStop(0, 'rgba(46,125,50,0.0)');
+  grad.addColorStop(1, 'rgba(46,125,50,0.15)');
+  ctx.beginPath();
+  ctx.arc(cx, cy, r*1.1, 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Direction arrow
+  const ax = cx + Math.sin(rad) * r * 0.7;
+  const ay = cy - Math.cos(rad) * r * 0.7;
+
+  // Arrow shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur  = 12;
+  ctx.translate(ax, ay);
+  ctx.rotate(rad);
+
+  // Arrow body
+  ctx.beginPath();
+  ctx.moveTo(0, -36);
+  ctx.lineTo(14, 14);
+  ctx.lineTo(0, 4);
+  ctx.lineTo(-14, 14);
+  ctx.closePath();
+  ctx.fillStyle = dist < 50 ? '#4CAF50' : '#2E7D32';
+  ctx.fill();
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  // Distance bubble near arrow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur  = 8;
+  const bx = cx + Math.sin(rad) * r * 1.05;
+  const by = cy - Math.cos(rad) * r * 1.05;
+  ctx.beginPath();
+  ctx.roundRect(bx - 36, by - 14, 72, 28, 14);
+  ctx.fillStyle = 'rgba(46,125,50,0.92)';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 13px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(formatDist(dist), bx, by);
+
+  // Horizon line
+  ctx.beginPath();
+  ctx.moveTo(0, cy);
+  ctx.lineTo(canvas.width, cy);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Compass ticks at top
+  drawCompassTicks(ctx, canvas.width, heading);
+}
+
+function drawCompassTicks(ctx, w, hdg) {
+  const y = 72;
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  ctx.save();
+  for (let i = 0; i < 360; i += 5) {
+    const rel = ((i - hdg) + 360) % 360;
+    const x   = rel <= 180 ? w/2 + (rel/180)*w*0.6 : w/2 - ((360-rel)/180)*w*0.6;
+    if (x < 0 || x > w) continue;
+    const isMajor = i % 45 === 0;
+    const isMed   = i % 15 === 0;
+    ctx.beginPath();
+    ctx.moveTo(x, y - (isMajor ? 14 : isMed ? 9 : 5));
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = isMajor ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)';
+    ctx.lineWidth   = isMajor ? 2 : 1;
+    ctx.stroke();
+    if (isMajor) {
+      ctx.fillStyle = i === 0 ? '#ef5350' : 'white';
+      ctx.font = 'bold 11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(dirs[i/45], x, y - 20);
+    }
+  }
+  // Center marker
+  ctx.beginPath();
+  ctx.moveTo(w/2, y - 18);
+  ctx.lineTo(w/2, y + 4);
+  ctx.strokeStyle = '#4CAF50';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCompassCanvas() {
+  const canvas = document.getElementById('compassCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const cx = 100, cy = 100, r = 85;
+  ctx.clearRect(0, 0, 200, 200);
+
+  // Background
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fill();
+  ctx.strokeStyle = '#2E7D32';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Cardinal directions
+  const dirs = [['N','#ef5350',0],['E','white',90],['S','white',180],['W','white',270]];
+  dirs.forEach(([label, color, deg]) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    ctx.fillStyle = color;
+    ctx.font = 'bold 14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx + Math.cos(rad)*(r-18), cy + Math.sin(rad)*(r-18));
+  });
+
+  // Heading needle
+  if (driverCoords && destCoords) {
+    const bear = bearing(driverCoords, destCoords);
+    const relBear = ((bear - heading) + 360) % 360;
+    const rad = (relBear - 90) * Math.PI / 180;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rad + Math.PI/2);
+    ctx.beginPath();
+    ctx.moveTo(0, -55);
+    ctx.lineTo(8, 10);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(-8, 10);
+    ctx.closePath();
+    ctx.fillStyle = '#4CAF50';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI*2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+}
+
+// ── GPS & routing ──────────────────────────────────────────
+function updateStep() {
+  if (!driverCoords || routeSteps.length === 0) return;
+  const step = routeSteps[currentStep];
+  if (!step) return;
+
+  const stepCoord = {
+    lat: step.maneuver.location[1],
+    lng: step.maneuver.location[0]
+  };
+  const distToStep = haversine(driverCoords, stepCoord);
+
+  document.getElementById('dirIcon').textContent        = stepArrow(step.maneuver);
+  document.getElementById('dirInstruction').textContent = step.name || step.maneuver.type || 'Continue';
+  document.getElementById('dirDistance').textContent    = formatDist(distToStep);
+
+  // Advance step when close
+  if (distToStep < 25 && currentStep < routeSteps.length - 1) {
+    currentStep++;
+  }
+}
+
+async function initNavigation() {
+  document.getElementById('arStatus').textContent = 'Geocoding address...';
+
+  destCoords = await geocodeAddress(DEST_ADDRESS);
+  if (!destCoords) {
+    document.getElementById('arStatus').textContent = '⚠️ Could not locate address';
+    return;
+  }
+
+  document.getElementById('arStatus').textContent = 'Waiting for GPS...';
+
+  watchId = navigator.geolocation.watchPosition(async (pos) => {
+    const newCoords = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+    const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : 0;
+    document.getElementById('speedVal').textContent = speed + ' km/h';
+
+    if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+      heading = pos.coords.heading;
+    }
+
+    const isFirst = !driverCoords;
+    driverCoords = newCoords;
+
+    const distToDest = haversine(driverCoords, destCoords);
+    document.getElementById('totalDist').textContent = formatDist(distToDest);
+    document.getElementById('arStatus').textContent  = '📡 GPS Active';
+
+    // Show delivered button when within 50m
+    if (distToDest < 50 && ORDER_STATUS === 'shipped') {
+      document.getElementById('deliverBar').style.display = 'block';
+    }
+
+    // Fetch route on first fix or every 200m
+    if (isFirst || routeSteps.length === 0) {
+      const route = await getRoute(driverCoords, destCoords);
+      if (route) {
+        routeSteps = route.legs[0].steps;
+        currentStep = 0;
+        const dur = route.duration;
+        document.getElementById('etaVal').textContent = formatETA(dur);
+
+        // Draw route on leaflet if open
+        if (leafletMap) {
+          if (routeLine) leafletMap.removeLayer(routeLine);
+          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+          routeLine = L.polyline(coords, {color:'#2E7D32', weight:5, opacity:0.8}).addTo(leafletMap);
+        }
+      }
+    }
+
+    updateStep();
+    drawAR();
+    drawCompassCanvas();
+    updateLeaflet();
+
+  }, (err) => {
+    document.getElementById('arStatus').textContent = '⚠️ GPS unavailable';
+  }, {
+    enableHighAccuracy: true,
+    maximumAge: 2000,
+    timeout: 10000
+  });
+}
+
+// ── Device orientation for heading ────────────────────────
+function initOrientation() {
+  if (window.DeviceOrientationEvent) {
+    const handler = (e) => {
+      if (e.webkitCompassHeading !== undefined) {
+        heading = e.webkitCompassHeading; // iOS
+      } else if (e.alpha !== null) {
+        heading = (360 - e.alpha) % 360;  // Android
+      }
+      drawAR();
+      drawCompassCanvas();
+    };
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS 13+ requires permission
+      document.getElementById('arContainer').addEventListener('click', () => {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state === 'granted') window.addEventListener('deviceorientation', handler);
+        });
+      }, {once: true});
+    } else {
+      window.addEventListener('deviceorientation', handler);
+    }
+  }
+}
+
+// ── Resize handler ─────────────────────────────────────────
+window.addEventListener('resize', drawAR);
+
+// ── Init ───────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  await startCamera();
+  initOrientation();
+  await initNavigation();
+  // Redraw loop
+  setInterval(() => { drawAR(); drawCompassCanvas(); }, 500);
+});
+</script>
+{% endblock %}

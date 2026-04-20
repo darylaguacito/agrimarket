@@ -1,0 +1,141 @@
+{# Reusable location picker component
+   Usage: include with variables:
+   - lat_field: name of hidden lat input
+   - lng_field: name of hidden lng input
+   - addr_field: name of address text input (optional, for reverse geocode display)
+   - saved_lat: existing lat value
+   - saved_lng: existing lng value
+#}
+<div class="lp-wrap">
+  <div class="lp-header">
+    <span class="lp-title">📍 Pin Your Exact Location</span>
+    <button type="button" class="lp-gps-btn" onclick="lpUseGPS()">🎯 Use My GPS</button>
+  </div>
+  <div class="lp-status" id="lpStatus">
+    {% if saved_lat and saved_lng %}
+    ✅ Location saved — drag pin to update
+    {% else %}
+    Tap the map or use GPS to set your location
+    {% endif %}
+  </div>
+  <div id="lpMap" class="lp-map"></div>
+  <div class="lp-coords" id="lpCoords" style="{{ 'display:flex' if saved_lat else 'display:none' }}">
+    <span id="lpLatTxt">{{ saved_lat or '' }}</span>,
+    <span id="lpLngTxt">{{ saved_lng or '' }}</span>
+  </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function() {
+  const LAT_FIELD  = '{{ lat_field }}';
+  const LNG_FIELD  = '{{ lng_field }}';
+  const SAVED_LAT  = {{ saved_lat or 'null' }};
+  const SAVED_LNG  = {{ saved_lng or 'null' }};
+  const DEFAULT    = {lat: 6.3333, lng: 124.9833}; // Tupi, South Cotabato
+
+  let lpMap, lpMarker;
+
+  function initLP() {
+    const center = (SAVED_LAT && SAVED_LNG) ? {lat: SAVED_LAT, lng: SAVED_LNG} : DEFAULT;
+    lpMap = L.map('lpMap', {zoomControl: true}).setView([center.lat, center.lng], SAVED_LAT ? 16 : 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19}).addTo(lpMap);
+
+    const pinIcon = L.divIcon({
+      className: '',
+      html: '<div class="lp-pin">📍</div>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+
+    if (SAVED_LAT && SAVED_LNG) {
+      lpMarker = L.marker([SAVED_LAT, SAVED_LNG], {icon: pinIcon, draggable: true}).addTo(lpMap);
+      setFields(SAVED_LAT, SAVED_LNG);
+      lpMarker.on('dragend', e => {
+        const p = e.target.getLatLng();
+        setFields(p.lat, p.lng);
+        reverseGeocode(p.lat, p.lng);
+      });
+    }
+
+    // Click to place/move pin
+    lpMap.on('click', e => {
+      const {lat, lng} = e.latlng;
+      if (lpMarker) {
+        lpMarker.setLatLng([lat, lng]);
+      } else {
+        lpMarker = L.marker([lat, lng], {icon: pinIcon, draggable: true}).addTo(lpMap);
+        lpMarker.on('dragend', ev => {
+          const p = ev.target.getLatLng();
+          setFields(p.lat, p.lng);
+          reverseGeocode(p.lat, p.lng);
+        });
+      }
+      setFields(lat, lng);
+      reverseGeocode(lat, lng);
+    });
+  }
+
+  function setFields(lat, lng) {
+    document.querySelector(`[name="${LAT_FIELD}"]`).value = lat.toFixed(7);
+    document.querySelector(`[name="${LNG_FIELD}"]`).value = lng.toFixed(7);
+    document.getElementById('lpLatTxt').textContent = lat.toFixed(6);
+    document.getElementById('lpLngTxt').textContent = lng.toFixed(6);
+    document.getElementById('lpCoords').style.display = 'flex';
+    document.getElementById('lpStatus').textContent = '✅ Location pinned — drag to adjust';
+    document.getElementById('lpStatus').style.color = '#1B5E20';
+  }
+
+  async function reverseGeocode(lat, lng) {
+    const addrInput = document.querySelector('[name="{{ addr_field }}"]');
+    if (!addrInput) return;
+    try {
+      const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, {
+        headers: {'Accept-Language': 'en'}
+      });
+      const data = await res.json();
+      if (data.display_name) {
+        addrInput.value = data.display_name;
+      }
+    } catch(e) {}
+  }
+
+  window.lpUseGPS = function() {
+    const btn = document.querySelector('.lp-gps-btn');
+    btn.textContent = '⏳ Getting GPS...';
+    btn.disabled = true;
+    navigator.geolocation.getCurrentPosition(pos => {
+      const {latitude: lat, longitude: lng} = pos.coords;
+      lpMap.setView([lat, lng], 17);
+      const pinIcon = L.divIcon({
+        className: '',
+        html: '<div class="lp-pin">📍</div>',
+        iconSize: [32, 32], iconAnchor: [16, 32]
+      });
+      if (lpMarker) {
+        lpMarker.setLatLng([lat, lng]);
+      } else {
+        lpMarker = L.marker([lat, lng], {icon: pinIcon, draggable: true}).addTo(lpMap);
+        lpMarker.on('dragend', e => {
+          const p = e.target.getLatLng();
+          setFields(p.lat, p.lng);
+          reverseGeocode(p.lat, p.lng);
+        });
+      }
+      setFields(lat, lng);
+      reverseGeocode(lat, lng);
+      btn.textContent = '🎯 Use My GPS';
+      btn.disabled = false;
+    }, () => {
+      btn.textContent = '🎯 Use My GPS';
+      btn.disabled = false;
+      document.getElementById('lpStatus').textContent = '⚠️ GPS unavailable — tap map to pin';
+      document.getElementById('lpStatus').style.color = '#C62828';
+    }, {enableHighAccuracy: true, timeout: 10000});
+  };
+
+  document.addEventListener('DOMContentLoaded', initLP);
+})();
+</script>

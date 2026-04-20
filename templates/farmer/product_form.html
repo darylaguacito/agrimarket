@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if product else 'Add' }} Product{% endblock %}
+{% block page_title %}{{ 'Edit' if product else 'New' }} Product{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('farmer.products') }}" class="back-btn">‹</a>
+<span class="app-title">{{ 'Edit' if product else 'New' }} Product</span>
+{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="form-page">
+  {% if product and product.image_path %}
+  <div class="current-img"><img src="{{ url_for('static', filename=product.image_path) }}" alt="Current"></div>
+  {% endif %}
+  <div class="field"><label>Product Image</label><input type="file" name="image" accept="image/*"></div>
+  <div class="field"><label>Name *</label><input type="text" name="name" value="{{ product.name if product else '' }}" required></div>
+  <div class="field">
+    <label>Category</label>
+    <select name="category_id">
+      <option value="">Select category</option>
+      {% for c in categories %}
+      <option value="{{ c.id }}" {{ 'selected' if product and product.category_id == c.id }}>{{ c.icon }} {{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Price (₱) *</label><input type="number" name="price" step="0.01" min="0" value="{{ product.price if product else '' }}" required></div>
+    <div class="field"><label>Quantity *</label><input type="number" name="quantity" min="0" value="{{ product.quantity if product else '' }}" required></div>
+  </div>
+  <div class="field">
+    <label>Unit</label>
+    <select name="unit">
+      {% for u in ['kg','g','piece','bundle','sack','liter','dozen','box'] %}
+      <option {{ 'selected' if product and product.unit == u }}>{{ u }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field"><label>Description</label><textarea name="description" rows="3">{{ product.description if product else '' }}</textarea></div>
+  <div class="field-row">
+    <div class="field">
+      <label>Status</label>
+      <select name="status">
+        <option value="active" {{ 'selected' if not product or product.status == 'active' }}>Active</option>
+        <option value="inactive" {{ 'selected' if product and product.status == 'inactive' }}>Inactive</option>
+      </select>
+    </div>
+    <div class="field check-field">
+      <label><input type="checkbox" name="is_featured" {{ 'checked' if product and product.is_featured }}> Featured</label>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary btn-full">{{ 'Update' if product else 'Add' }} Product</button>
+</form>
+{% endblock %}

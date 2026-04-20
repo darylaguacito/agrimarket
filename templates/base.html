@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#2E7D32">
+<title>{% block title %}AgriMarket{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+</head>
+<body class="role-{{ current_user.role if current_user.is_authenticated else 'guest' }}">
+
+{% if current_user.is_authenticated %}
+<!-- Top App Bar -->
+<header class="app-bar">
+  <div class="app-bar-left">
+    {% block app_bar_left %}
+    <span class="app-logo">🌾</span>
+    <span class="app-title">{% block page_title %}AgriMarket{% endblock %}</span>
+    {% endblock %}
+  </div>
+  <div class="app-bar-right">
+    <a href="{{ url_for('notif.index') }}" class="notif-icon" id="notifIcon">
+      🔔<span class="notif-badge" id="notifDot" style="display:none">0</span>
+    </a>
+    <div class="avatar-btn" onclick="toggleMenu()">
+      {{ current_user.full_name[0].upper() }}
+    </div>
+    <div class="user-menu" id="userMenu" style="display:none">
+      <div class="user-menu-name">{{ current_user.full_name }}</div>
+      <div class="user-menu-role">{{ current_user.role|capitalize }}</div>
+      <hr>
+      {% if current_user.role == 'farmer' %}
+      <a href="{{ url_for('farmer.profile') }}">👤 Profile</a>
+      {% elif current_user.role == 'driver' %}
+      <a href="{{ url_for('driver.profile') }}">👤 Profile</a>
+      {% endif %}
+      <a href="{{ url_for('auth.logout') }}">🚪 Logout</a>
+    </div>
+  </div>
+</header>
+
+<!-- Flash messages -->
+<div class="flash-wrap">
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash flash-{{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+</div>
+
+<!-- Page content -->
+<main class="page-content {% block content_class %}{% endblock %}">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- Bottom Navigation -->
+{% block bottom_nav %}
+<nav class="bottom-nav">
+  {% if current_user.role in ('buyer','farmer') %}
+  <a href="{{ url_for('buyer.home') }}" class="bnav-item {% if request.endpoint == 'buyer.home' %}active{% endif %}">
+    <span class="bnav-icon">🏠</span><span class="bnav-label">Home</span>
+  </a>
+  {% if current_user.role == 'farmer' %}
+  <a href="{{ url_for('farmer.dashboard') }}" class="bnav-item {% if 'farmer' in request.endpoint %}active{% endif %}">
+    <span class="bnav-icon">🌱</span><span class="bnav-label">Farm</span>
+  </a>
+  {% endif %}
+  <a href="{{ url_for('buyer.cart') }}" class="bnav-item {% if request.endpoint == 'buyer.cart' %}active{% endif %}">
+    <span class="bnav-icon">🛒</span><span class="bnav-label">Cart</span>
+  </a>
+  <a href="{{ url_for('buyer.orders') }}" class="bnav-item {% if request.endpoint in ('buyer.orders','buyer.order_detail') %}active{% endif %}">
+    <span class="bnav-icon">📦</span><span class="bnav-label">Orders</span>
+  </a>
+  <a href="{{ url_for('notif.index') }}" class="bnav-item {% if request.endpoint == 'notif.index' %}active{% endif %}">
+    <span class="bnav-icon">🔔</span><span class="bnav-label">Alerts</span>
+  </a>
+  <a href="{{ url_for('buyer.profile') }}" class="bnav-item {% if request.endpoint == 'buyer.profile' %}active{% endif %}">
+    <span class="bnav-icon">👤</span><span class="bnav-label">Profile</span>
+  </a>
+  {% elif current_user.role == 'driver' %}
+  <a href="{{ url_for('driver.dashboard') }}" class="bnav-item {% if request.endpoint == 'driver.dashboard' %}active{% endif %}">
+    <span class="bnav-icon">🏠</span><span class="bnav-label">Home</span>
+  </a>
+  <a href="{{ url_for('driver.route_map') }}" class="bnav-item {% if request.endpoint == 'driver.route_map' %}active{% endif %}">
+    <span class="bnav-icon">🗺️</span><span class="bnav-label">Route</span>
+  </a>
+  <a href="{{ url_for('driver.deliveries') }}" class="bnav-item {% if 'deliveries' in request.endpoint %}active{% endif %}">
+    <span class="bnav-icon">🚚</span><span class="bnav-label">Deliveries</span>
+  </a>
+  <a href="{{ url_for('notif.index') }}" class="bnav-item {% if request.endpoint == 'notif.index' %}active{% endif %}">
+    <span class="bnav-icon">🔔</span><span class="bnav-label">Alerts</span>
+  </a>
+  <a href="{{ url_for('driver.profile') }}" class="bnav-item {% if request.endpoint == 'driver.profile' %}active{% endif %}">
+    <span class="bnav-icon">👤</span><span class="bnav-label">Profile</span>
+  </a>
+  {% elif current_user.role == 'admin' %}
+  <a href="{{ url_for('admin.dashboard') }}" class="bnav-item {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
+    <span class="bnav-icon">📊</span><span class="bnav-label">Dashboard</span>
+  </a>
+  <a href="{{ url_for('admin.users') }}" class="bnav-item {% if request.endpoint == 'admin.users' %}active{% endif %}">
+    <span class="bnav-icon">👥</span><span class="bnav-label">Users</span>
+  </a>
+  <a href="{{ url_for('admin.orders') }}" class="bnav-item {% if request.endpoint == 'admin.orders' %}active{% endif %}">
+    <span class="bnav-icon">📦</span><span class="bnav-label">Orders</span>
+  </a>
+  <a href="{{ url_for('admin.analytics') }}" class="bnav-item {% if request.endpoint == 'admin.analytics' %}active{% endif %}">
+    <span class="bnav-icon">📈</span><span class="bnav-label">Analytics</span>
+  </a>
+  {% endif %}
+</nav>
+{% endblock %}
+
+{% else %}
+<!-- Unauthenticated -->
+<main class="auth-page">{% block auth_content %}{% endblock %}</main>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js')
+    .then(() => console.log('SW registered'))
+    .catch(e => console.log('SW error', e));
+}
+</script>
+</body>
+</html>

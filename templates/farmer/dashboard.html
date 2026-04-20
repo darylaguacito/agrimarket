@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}Farmer Dashboard{% endblock %}
+{% block page_title %}My Farm{% endblock %}
+{% block content %}
+<div class="dash-greeting">
+  <div>
+    <h2>Hello, {{ current_user.full_name.split()[0] }}! 🌱</h2>
+    <p class="muted">{{ profile.farm_name if profile else 'Your Farm' }}</p>
+  </div>
+  <a href="{{ url_for('farmer.product_form') }}" class="btn btn-primary btn-sm">+ Add Product</a>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card green">
+    <div class="stat-icon">🌾</div>
+    <div class="stat-val">{{ stats.active_products or 0 }}</div>
+    <div class="stat-label">Active Products</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon">📦</div>
+    <div class="stat-val">{{ order_stats.pending or 0 }}</div>
+    <div class="stat-label">Pending Orders</div>
+  </div>
+  <div class="stat-card yellow">
+    <div class="stat-icon">✅</div>
+    <div class="stat-val">{{ order_stats.delivered or 0 }}</div>
+    <div class="stat-label">Delivered</div>
+  </div>
+  <div class="stat-card teal">
+    <div class="stat-icon">💰</div>
+    <div class="stat-val">₱{{ "%.0f"|format(order_stats.revenue|float) }}</div>
+    <div class="stat-label">Revenue</div>
+  </div>
+</div>
+
+<!-- Recent orders -->
+<div class="section">
+  <div class="section-header">
+    <h3>Recent Orders</h3>
+    <a href="{{ url_for('farmer.orders') }}" class="see-all">See all</a>
+  </div>
+  {% if not recent_orders %}
+  <div class="empty-state"><p>No orders yet.</p></div>
+  {% else %}
+  {% for o in recent_orders %}
+  <a href="{{ url_for('farmer.order_detail', oid=o.id) }}" class="order-card">
+    <div class="order-card-top">
+      <span class="order-id">#{{ '%05d'|format(o.id) }}</span>
+      <span class="status-pill status-{{ o.status }}">{{ o.status|capitalize }}</span>
+    </div>
+    <div class="order-farm">👤 {{ o.buyer_name }}</div>
+    <div class="order-card-bottom">
+      <span class="order-amount">₱{{ "%.2f"|format(o.total_amount|float) }}</span>
+      <span class="order-date">{{ o.created_at|dt('%b %d') }}</span>
+    </div>
+  </a>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<!-- Top products -->
+{% if top_products %}
+<div class="section">
+  <div class="section-header"><h3>Top Products</h3></div>
+  {% for p in top_products %}
+  <div class="top-prod-row">
+    <span class="top-prod-name">{{ p.name }}</span>
+    <span class="top-prod-sold">{{ p.sold }} sold</span>
+    <span class="top-prod-price">₱{{ "%.2f"|format(p.price|float) }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

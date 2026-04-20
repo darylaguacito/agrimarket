@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Checkout – AgriMarket{% endblock %}
+{% block page_title %}Checkout{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('buyer.cart') }}" class="back-btn">‹</a>
+<span class="app-title">Checkout</span>
+{% endblock %}
+{% block content %}
+<form method="post" class="checkout-form">
+  <div class="checkout-section">
+    <h3>📍 Delivery Details</h3>
+    <div class="field">
+      <label>Contact Number *</label>
+      <input type="tel" name="contact_number" value="{{ user.phone or '' }}" placeholder="09XXXXXXXXX" required>
+    </div>
+    <div class="field">
+      <label>Shipping Address *</label>
+      <textarea name="shipping_address" rows="3" placeholder="House No., Street, Barangay, City, Province" required>{{ user.address or '' }}</textarea>
+    </div>
+    <div class="field">
+      <label>Order Notes (optional)</label>
+      <input type="text" name="notes" placeholder="Special instructions...">
+    </div>
+  </div>
+
+  <div class="checkout-section">
+    <h3>💳 Payment Method</h3>
+    <div class="payment-options">
+      <label class="payment-opt">
+        <input type="radio" name="payment_method" value="cod" checked>
+        <span class="payment-card"><span class="pay-icon">💵</span><span>Cash on Delivery</span></span>
+      </label>
+      <label class="payment-opt">
+        <input type="radio" name="payment_method" value="online">
+        <span class="payment-card"><span class="pay-icon">💳</span><span>Online Payment</span></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="checkout-section">
+    <h3>🛒 Order Summary</h3>
+    {% for item in items %}
+    <div class="order-line">
+      <span>{{ item.name }} × {{ item.quantity }}</span>
+      <span>₱{{ "%.2f"|format(item.price|float * item.quantity) }}</span>
+    </div>
+    {% endfor %}
+    <div class="order-line total">
+      <span>Total</span><span>₱{{ "%.2f"|format(total) }}</span>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary btn-full btn-lg">Place Order 🌾</button>
+</form>
+{% endblock %}

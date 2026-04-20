@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Notifications{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+{% block content %}
+{% if notifications %}
+<div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
+  <button onclick="markAllRead()" class="btn btn-sm btn-outline">✓ Mark all read</button>
+</div>
+{% endif %}
+{% if not notifications %}
+<div class="empty-state" style="margin-top:4rem">
+  <div class="empty-icon">🔔</div>
+  <h3>No notifications</h3>
+  <p class="muted">You're all caught up!</p>
+</div>
+{% else %}
+<div class="notif-list">
+  {% for n in notifications %}
+  <div class="notif-item {% if not n.is_read %}unread{% endif %}">
+    <div class="notif-icon-wrap">
+      {% if n.type == 'order' %}📦
+      {% elif n.type == 'delivery' %}🚚
+      {% elif n.type == 'info' %}ℹ️
+      {% else %}🔔{% endif %}
+    </div>
+    <div class="notif-body">
+      <div class="notif-title">{{ n.title }}</div>
+      <div class="notif-msg">{{ n.message }}</div>
+      <div class="notif-time muted">
+        {{ n.created_at|dt }}
+      </div>
+    </div>
+    {% if not n.is_read %}
+    <div class="notif-unread-dot"></div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+<script>
+function markAllRead() {
+  fetch('/notifications/mark-all', {method:'POST'})
+    .then(() => {
+      document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+      document.querySelectorAll('.notif-unread-dot').forEach(el => el.remove());
+      const dot = document.getElementById('notifDot');
+      if (dot) dot.style.display = 'none';
+    });
+}
+</script>
+{% endblock %}

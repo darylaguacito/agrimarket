@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block page_title %}Admin Panel{% endblock %}
+{% block content %}
+{% if stats.pending_approvals > 0 %}
+<div class="alert-banner">⚠️ {{ stats.pending_approvals }} user(s) awaiting approval
+  <a href="{{ url_for('admin.users') }}">Review →</a>
+</div>
+{% endif %}
+
+<div class="stats-grid">
+  {% for icon, label, val, color in [
+    ('👥','Total Users', stats.users, 'blue'),
+    ('🌱','Farmers', stats.farmers, 'green'),
+    ('🛒','Buyers', stats.buyers, 'teal'),
+    ('🚚','Drivers', stats.drivers, 'yellow'),
+    ('🌾','Products', stats.products, 'green'),
+    ('📦','Orders', stats.orders, 'blue'),
+    ('💰','Revenue', '₱'~"%.0f"|format(stats.revenue|float), 'teal'),
+    ('⏳','Pending Approvals', stats.pending_approvals, 'yellow')
+  ] %}
+  <div class="stat-card {{ color }}">
+    <div class="stat-icon">{{ icon }}</div>
+    <div class="stat-val">{{ val }}</div>
+    <div class="stat-label">{{ label }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if pending_users %}
+<div class="section">
+  <div class="section-header"><h3>⏳ Pending Approvals</h3><a href="{{ url_for('admin.users') }}" class="see-all">See all</a></div>
+  {% for u in pending_users %}
+  <div class="approval-card">
+    <div class="approval-info">
+      <div class="approval-name">{{ u.full_name }}</div>
+      <div class="muted">{{ u.role|capitalize }} · {{ u.email }}</div>
+    </div>
+    <form method="post" action="{{ url_for('admin.approve_user', uid=u.id) }}">
+      <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="section">
+  <div class="section-header"><h3>Recent Orders</h3><a href="{{ url_for('admin.orders') }}" class="see-all">See all</a></div>
+  {% for o in recent_orders %}
+  <div class="order-card">
+    <div class="order-card-top">
+      <span class="order-id">#{{ '%05d'|format(o.id) }}</span>
+      <span class="status-pill status-{{ o.status }}">{{ o.status|capitalize }}</span>
+    </div>
+    <div class="order-farm">{{ o.buyer_name }} → {{ o.farmer_name }}</div>
+    <div class="order-card-bottom">
+      <span class="order-amount">₱{{ "%.2f"|format(o.total_amount|float) }}</span>
+      <span class="muted">{{ o.created_at|dt('%b %d') }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

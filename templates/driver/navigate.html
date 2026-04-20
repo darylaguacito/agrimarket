@@ -1,0 +1,387 @@
+{% extends 'base.html' %}
+{% block title %}Navigate – Order #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('driver.delivery_detail', oid=order.id) }}" class="back-btn" id="backBtn">‹</a>
+<span class="app-title" id="navTitle">Navigating...</span>
+{% endblock %}
+{% block bottom_nav %}{% endblock %}
+{% block content_class %}nav-page{% endblock %}
+
+{% block content %}
+
+<!-- Full-screen map -->
+<div id="navMap" class="nav-map"></div>
+
+<!-- Top direction banner -->
+<div class="nav-dir-banner" id="dirBanner">
+  <div class="nav-dir-arrow" id="navArrow">↑</div>
+  <div class="nav-dir-body">
+    <div class="nav-dir-main" id="navDirMain">Getting route...</div>
+    <div class="nav-dir-dist" id="navDirDist"></div>
+  </div>
+  <div class="nav-dir-eta" id="navEtaBox">
+    <div class="nav-eta-val" id="navETA">—</div>
+    <div class="nav-eta-label">ETA</div>
+  </div>
+</div>
+
+<!-- Bottom info bar -->
+<div class="nav-bottom-bar">
+  <div class="nav-bottom-dest">
+    <div class="nav-dest-label">Delivering to</div>
+    <div class="nav-dest-name">{{ order.buyer_name }}</div>
+    <div class="nav-dest-addr" id="navDestAddr">{{ order.shipping_address }}</div>
+  </div>
+  <div class="nav-bottom-actions">
+    <a href="tel:{{ order.buyer_phone }}" class="nav-action-btn nav-call">📞</a>
+    <button class="nav-action-btn nav-center" onclick="recenter()">📍</button>
+    <button class="nav-action-btn nav-sat" id="satBtn" onclick="toggleSat()">🛰️</button>
+  </div>
+</div>
+
+<!-- Total distance remaining -->
+<div class="nav-dist-pill" id="distPill">— km</div>
+
+<!-- Arrived overlay -->
+<div class="nav-arrived" id="arrivedOverlay" style="display:none">
+  <div class="nav-arrived-card">
+    <div class="nav-arrived-icon">🏁</div>
+    <div class="nav-arrived-title">You have arrived!</div>
+    <div class="nav-arrived-sub">{{ order.buyer_name }}</div>
+    <div class="nav-arrived-addr">{{ order.shipping_address }}</div>
+    {% if order.status == 'shipped' %}
+    <form method="post" action="{{ url_for('driver.update_delivery', oid=order.id) }}" style="margin-top:1rem">
+      <input type="hidden" name="status" value="delivered">
+      <input type="hidden" name="note" value="Delivered via in-app navigation">
+      <button type="submit" class="btn btn-primary btn-full btn-lg">✅ Mark as Delivered</button>
+    </form>
+    {% endif %}
+    <button onclick="document.getElementById('arrivedOverlay').style.display='none'" class="btn btn-outline btn-full" style="margin-top:.5rem">Continue Viewing Map</button>
+  </div>
+</div>
+
+<!-- Rerouting toast -->
+<div class="nav-toast" id="rerouteToast" style="display:none">🔄 Rerouting...</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ── Destination data ───────────────────────────────────────
+const DEST_LAT    = {{ dest_lat or 'null' }};
+const DEST_LNG    = {{ dest_lng or 'null' }};
+const DEST_ADDR   = {{ order.shipping_address | tojson }};
+const ORDER_ID    = {{ order.id }};
+const ORDER_STATUS= {{ order.status | tojson }};
+
+// ── State ──────────────────────────────────────────────────
+let map, driverMarker, destMarker, routePolyline, dashPolyline;
+let driverPos   = null;
+let destCoords  = null;
+let steps       = [];
+let stepIdx     = 0;
+let watchId     = null;
+let isSat       = false;
+let osmLayer, satLayer;
+let lastReroute = 0;
+let arrived     = false;
+let heading     = 0;
+
+// ── Init map ───────────────────────────────────────────────
+function initMap() {
+  map = L.map('navMap', {zoomControl: false, attributionControl: false});
+
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19});
+  satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19});
+  osmLayer.addTo(map);
+
+  L.control.zoom({position: 'topright'}).addTo(map);
+
+  // Driver marker — arrow icon
+  driverMarker = L.marker([6.3333, 124.9833], {
+    icon: L.divIcon({
+      className: '',
+      html: '<div class="nav-driver-dot"><div class="nav-driver-arrow" id="driverArrow">▲</div></div>',
+      iconSize: [40, 40], iconAnchor: [20, 20]
+    }),
+    zIndexOffset: 1000
+  });
+
+  // Destination marker
+  destMarker = L.marker([6.3333, 124.9833], {
+    icon: L.divIcon({
+      className: '',
+      html: '<div class="nav-dest-pin">📦<div class="nav-dest-label-pin">Destination</div></div>',
+      iconSize: [48, 56], iconAnchor: [24, 56]
+    })
+  });
+
+  map.setView([6.3333, 124.9833], 14);
+}
+
+// ── Geocode destination ────────────────────────────────────
+async function resolveDestination() {
+  // Use exact coords if available
+  if (DEST_LAT && DEST_LNG) {
+    destCoords = {lat: DEST_LAT, lng: DEST_LNG};
+    return;
+  }
+  // Cache check
+  const key = 'geo_' + btoa(DEST_ADDR).slice(0, 20);
+  const cached = localStorage.getItem(key);
+  if (cached) { destCoords = JSON.parse(cached); return; }
+
+  try {
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(DEST_ADDR)}&limit=1&countrycodes=ph`,
+      {headers: {'Accept-Language': 'en'}}
+    );
+    const d = await r.json();
+    if (d.length) {
+      destCoords = {lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon)};
+      localStorage.setItem(key, JSON.stringify(destCoords));
+    }
+  } catch(e) {}
+}
+
+// ── Fetch route from OSRM ──────────────────────────────────
+async function fetchRoute(from, to) {
+  const key = `rt_${from.lat.toFixed(3)},${from.lng.toFixed(3)}_${to.lat.toFixed(3)},${to.lng.toFixed(3)}`;
+  // Only cache for 5 min
+  const cached = localStorage.getItem(key);
+  if (cached) {
+    const {ts, data} = JSON.parse(cached);
+    if (Date.now() - ts < 300000) return data;
+  }
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?steps=true&geometries=geojson&overview=full`;
+    const r   = await fetch(url);
+    const d   = await r.json();
+    if (d.code === 'Ok') {
+      const route = d.routes[0];
+      localStorage.setItem(key, JSON.stringify({ts: Date.now(), data: route}));
+      return route;
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ── Draw route on map ──────────────────────────────────────
+function drawRoute(geojson) {
+  if (routePolyline) { map.removeLayer(routePolyline); map.removeLayer(dashPolyline); }
+  const coords = geojson.coordinates.map(c => [c[1], c[0]]);
+  routePolyline = L.polyline(coords, {color: '#1565C0', weight: 7, opacity: .9, lineJoin: 'round'}).addTo(map);
+  dashPolyline  = L.polyline(coords, {color: 'white',   weight: 2, opacity: .6, dashArray: '10 14'}).addTo(map);
+}
+
+// ── Update direction banner ────────────────────────────────
+function updateBanner() {
+  if (!steps.length) return;
+  const step = steps[stepIdx];
+  if (!step) return;
+
+  document.getElementById('navArrow').textContent   = maneuverArrow(step.maneuver);
+  document.getElementById('navDirMain').textContent = step.name || humanizeManeuver(step.maneuver);
+  document.getElementById('navDirDist').textContent = fmtDist(step.distance);
+}
+
+function maneuverArrow(m) {
+  if (!m) return '↑';
+  const t = m.type || '', mod = m.modifier || '';
+  if (t === 'arrive')  return '🏁';
+  if (t === 'depart')  return '🚀';
+  if (t === 'roundabout' || t === 'rotary') return '🔄';
+  if (mod === 'uturn') return '↩';
+  if (mod.includes('sharp left'))   return '↰';
+  if (mod.includes('sharp right'))  return '↱';
+  if (mod.includes('slight left'))  return '↖';
+  if (mod.includes('slight right')) return '↗';
+  if (mod.includes('left'))  return '←';
+  if (mod.includes('right')) return '→';
+  return '↑';
+}
+
+function humanizeManeuver(m) {
+  if (!m) return 'Continue';
+  const t = m.type || '', mod = m.modifier || '';
+  if (t === 'arrive')  return 'Arrive at destination';
+  if (t === 'depart')  return 'Head ' + mod;
+  if (t === 'turn')    return 'Turn ' + mod;
+  if (t === 'merge')   return 'Merge ' + mod;
+  if (t === 'fork')    return 'Keep ' + mod;
+  if (t === 'roundabout') return 'Enter roundabout';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// ── Reroute if off-track ───────────────────────────────────
+async function checkReroute() {
+  if (!driverPos || !destCoords || !steps.length) return;
+  if (Date.now() - lastReroute < 15000) return; // max every 15s
+
+  const step = steps[stepIdx];
+  if (!step) return;
+  const stepCoord = {lat: step.maneuver.location[1], lng: step.maneuver.location[0]};
+  const distToStep = haversine(driverPos, stepCoord);
+
+  // If more than 80m off the expected step, reroute
+  if (distToStep > 80 && stepIdx > 0) {
+    lastReroute = Date.now();
+    document.getElementById('rerouteToast').style.display = 'block';
+    setTimeout(() => document.getElementById('rerouteToast').style.display = 'none', 3000);
+    const route = await fetchRoute(driverPos, destCoords);
+    if (route) {
+      drawRoute(route.geometry);
+      steps   = route.legs[0].steps;
+      stepIdx = 0;
+      updateBanner();
+      updateETA(route.duration, route.distance);
+    }
+  }
+}
+
+function updateETA(seconds, meters) {
+  document.getElementById('navETA').textContent  = fmtETA(seconds);
+  document.getElementById('distPill').textContent = fmtDist(meters);
+}
+
+// ── GPS watch ──────────────────────────────────────────────
+function startGPS() {
+  if (!navigator.geolocation) {
+    document.getElementById('navDirMain').textContent = 'GPS not available';
+    return;
+  }
+  watchId = navigator.geolocation.watchPosition(onPosition,
+    () => { document.getElementById('navDirMain').textContent = 'Waiting for GPS...'; },
+    {enableHighAccuracy: true, maximumAge: 2000, timeout: 10000}
+  );
+}
+
+async function onPosition(pos) {
+  const newPos = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+  const spd    = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : 0;
+
+  if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+    heading = pos.coords.heading;
+    const el = document.getElementById('driverArrow');
+    if (el) el.style.transform = `rotate(${heading}deg)`;
+  }
+
+  const isFirst = !driverPos;
+  driverPos = newPos;
+
+  // Move driver marker
+  driverMarker.setLatLng([driverPos.lat, driverPos.lng]);
+  if (!map.hasLayer(driverMarker)) driverMarker.addTo(map);
+
+  // Keep map centered on driver with tilt-like follow
+  map.panTo([driverPos.lat, driverPos.lng], {animate: true, duration: 0.5});
+
+  // Distance to destination
+  if (destCoords) {
+    const d = haversine(driverPos, destCoords);
+    document.getElementById('distPill').textContent = fmtDist(d);
+
+    // Arrived check (within 30m)
+    if (d < 30 && !arrived) {
+      arrived = true;
+      document.getElementById('arrivedOverlay').style.display = 'flex';
+      document.getElementById('navDirMain').textContent = 'You have arrived!';
+      document.getElementById('navArrow').textContent   = '🏁';
+    }
+  }
+
+  // Advance steps
+  if (steps.length && stepIdx < steps.length - 1) {
+    const step = steps[stepIdx];
+    const sc   = {lat: step.maneuver.location[1], lng: step.maneuver.location[0]};
+    if (haversine(driverPos, sc) < 25) {
+      stepIdx++;
+      updateBanner();
+    }
+  }
+
+  // Push to server
+  if (!onPosition._last || Date.now() - onPosition._last > 8000) {
+    onPosition._last = Date.now();
+    fetch('/driver/api/location', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lat: driverPos.lat, lng: driverPos.lng})
+    }).catch(() => {});
+  }
+
+  // Initial route fetch
+  if (isFirst && destCoords) {
+    const route = await fetchRoute(driverPos, destCoords);
+    if (route) {
+      drawRoute(route.geometry);
+      steps   = route.legs[0].steps;
+      stepIdx = 0;
+      updateBanner();
+      updateETA(route.duration, route.distance);
+      // Fit both driver and dest
+      map.fitBounds([[driverPos.lat, driverPos.lng], [destCoords.lat, destCoords.lng]], {padding: [80, 80]});
+    }
+  }
+
+  await checkReroute();
+}
+
+// ── Controls ───────────────────────────────────────────────
+function recenter() {
+  if (driverPos) map.setView([driverPos.lat, driverPos.lng], 16, {animate: true});
+}
+
+function toggleSat() {
+  isSat = !isSat;
+  if (isSat) { map.removeLayer(osmLayer); satLayer.addTo(map); document.getElementById('satBtn').classList.add('active'); }
+  else        { map.removeLayer(satLayer); osmLayer.addTo(map); document.getElementById('satBtn').classList.remove('active'); }
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function haversine(a, b) {
+  const R = 6371000, φ1 = a.lat*Math.PI/180, φ2 = b.lat*Math.PI/180;
+  const dφ = (b.lat-a.lat)*Math.PI/180, dλ = (b.lng-a.lng)*Math.PI/180;
+  const x  = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+function fmtDist(m) { return m >= 1000 ? (m/1000).toFixed(1)+' km' : Math.round(m)+' m'; }
+function fmtETA(s)  { const m = Math.round(s/60); return m < 60 ? m+' min' : Math.floor(m/60)+'h '+(m%60)+'m'; }
+
+// ── Device orientation ─────────────────────────────────────
+function initOrientation() {
+  const handler = e => {
+    if (e.webkitCompassHeading !== undefined) heading = e.webkitCompassHeading;
+    else if (e.alpha !== null) heading = (360 - e.alpha) % 360;
+    const el = document.getElementById('driverArrow');
+    if (el) el.style.transform = `rotate(${heading}deg)`;
+  };
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    document.getElementById('navMap').addEventListener('click', () => {
+      DeviceOrientationEvent.requestPermission().then(s => {
+        if (s === 'granted') window.addEventListener('deviceorientation', handler);
+      });
+    }, {once: true});
+  } else {
+    window.addEventListener('deviceorientation', handler);
+  }
+}
+
+// ── Main ───────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  initMap();
+  initOrientation();
+  await resolveDestination();
+
+  if (destCoords) {
+    destMarker.setLatLng([destCoords.lat, destCoords.lng]).addTo(map);
+    map.setView([destCoords.lat, destCoords.lng], 15);
+    document.getElementById('navTitle').textContent = 'Navigating';
+  } else {
+    document.getElementById('navDirMain').textContent = '⚠️ Could not locate address';
+  }
+
+  startGPS();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block page_title %}Order #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('buyer.orders') }}" class="back-btn">‹</a>
+<span class="app-title">Order #{{ '%05d'|format(order.id) }}</span>
+{% endblock %}
+{% block content %}
+<!-- Status tracker -->
+<div class="tracker-card">
+  {% set steps = ['pending','confirmed','packed','shipped','delivered'] %}
+  {% set cur_idx = steps.index(order.status) if order.status in steps else 0 %}
+  <div class="tracker">
+    {% for step in steps %}
+    {% set idx = loop.index0 %}
+    <div class="tracker-step {% if idx <= cur_idx %}done{% endif %} {% if idx == cur_idx %}current{% endif %}">
+      <div class="tracker-dot">
+        {% if idx < cur_idx %}✓{% elif idx == cur_idx %}●{% else %}○{% endif %}
+      </div>
+      <div class="tracker-label">{{ step|capitalize }}</div>
+    </div>
+    {% if not loop.last %}<div class="tracker-line {% if idx < cur_idx %}done{% endif %}"></div>{% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Driver info -->
+{% if order.driver_name %}
+<div class="info-card">
+  <h3>🚚 Driver</h3>
+  <div class="info-row"><span>Name</span><span>{{ order.driver_name }}</span></div>
+  {% if order.driver_phone %}<div class="info-row"><span>Phone</span><a href="tel:{{ order.driver_phone }}">{{ order.driver_phone }}</a></div>{% endif %}
+</div>
+{% endif %}
+
+<!-- Order info -->
+<div class="info-card">
+  <h3>📦 Order Info</h3>
+  <div class="info-row"><span>Farm</span><span>{{ order.farm_name or order.farmer_name }}</span></div>
+  <div class="info-row"><span>Payment</span><span>{{ order.payment_method|upper }}</span></div>
+  <div class="info-row"><span>Address</span><span>{{ order.shipping_address }}</span></div>
+  <div class="info-row"><span>Contact</span><span>{{ order.contact_number }}</span></div>
+  <div class="info-row"><span>Total</span><strong>₱{{ "%.2f"|format(order.total_amount|float) }}</strong></div>
+</div>
+
+<!-- Items -->
+<div class="info-card">
+  <h3>🛒 Items</h3>
+  {% for item in items %}
+  <div class="order-item-row">
+    {% if item.image_path %}<img src="{{ url_for('static', filename=item.image_path) }}" class="order-item-img">{% endif %}
+    <div class="order-item-info">
+      <div>{{ item.name }}</div>
+      <div class="muted">{{ item.quantity }} {{ item.unit }} × ₱{{ "%.2f"|format(item.price|float) }}</div>
+    </div>
+    <div class="order-item-sub">₱{{ "%.2f"|format(item.price|float * item.quantity) }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Tracking timeline -->
+<div class="info-card">
+  <h3>📍 Tracking</h3>
+  <div class="timeline">
+    {% for t in tracking %}
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-content">
+        <div class="timeline-status">{{ t.status|capitalize }}</div>
+        {% if t.note %}<div class="timeline-note">{{ t.note }}</div>{% endif %}
+        <div class="timeline-time muted">{{ t.created_at|dt }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Review -->
+{% if order.status == 'delivered' and not has_review %}
+<div class="info-card review-card">
+  <h3>⭐ Rate this order</h3>
+  <form method="post" action="{{ url_for('buyer.submit_review', oid=order.id) }}">
+    <div class="star-row" id="starRow">
+      {% for i in range(1,6) %}<span class="star" data-v="{{ i }}" onclick="setRating({{ i }})">☆</span>{% endfor %}
+    </div>
+    <input type="hidden" name="rating" id="ratingVal" value="5">
+    <textarea name="comment" rows="2" placeholder="Share your experience..." class="review-input"></textarea>
+    <button type="submit" class="btn btn-primary btn-full">Submit Review</button>
+  </form>
+</div>
+{% endif %}
+<script>
+function setRating(v){
+  document.getElementById('ratingVal').value=v;
+  document.querySelectorAll('.star').forEach((s,i)=>{s.textContent=i<v?'★':'☆';s.style.color=i<v?'#f59e0b':'#ccc';});
+}
+setRating(5);
+</script>
+{% endblock %}

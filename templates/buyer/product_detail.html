@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}{{ product.name }} – AgriMarket{% endblock %}
+{% block page_title %}Product Detail{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('buyer.home') }}" class="back-btn">‹</a>
+<span class="app-title">{{ product.name }}</span>
+{% endblock %}
+{% block content %}
+<div class="detail-page">
+  <!-- Product image -->
+  <div class="detail-img-wrap">
+    {% if product.image_path %}
+    <img src="{{ url_for('static', filename=product.image_path) }}" alt="{{ product.name }}" class="detail-img">
+    {% else %}
+    <div class="detail-img-placeholder">🌿</div>
+    {% endif %}
+  </div>
+
+  <div class="detail-body">
+    <div class="detail-cat">{{ product.cat_name or 'General' }}</div>
+    <h1 class="detail-name">{{ product.name }}</h1>
+    <div class="detail-price">₱{{ "%.2f"|format(product.price|float) }}<span class="unit">/{{ product.unit }}</span></div>
+    <div class="detail-stock {% if product.quantity < 10 %}low{% endif %}">
+      📦 {{ product.quantity }} {{ product.unit }} available
+    </div>
+
+    {% if product.description %}
+    <div class="detail-section">
+      <h3>Description</h3>
+      <p>{{ product.description }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Seller info -->
+    <div class="seller-card">
+      <div class="seller-avatar">{{ product.seller_name[0].upper() }}</div>
+      <div class="seller-info">
+        <div class="seller-name">{{ product.farm_name or product.seller_name }}</div>
+        <div class="seller-loc">📍 {{ product.farm_location or 'Philippines' }}</div>
+        {% if product.rating_count > 0 %}
+        <div class="seller-rating">
+          {% for i in range(1,6) %}{{ '★' if i <= product.seller_rating|float|round else '☆' }}{% endfor %}
+          <span>({{ product.rating_count }} reviews)</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if current_user.role in ('buyer','farmer') and product.farmer_id != current_user.id %}
+    <div class="add-to-cart-bar">
+      <form method="post" action="{{ url_for('buyer.cart_add') }}" class="atc-form">
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        <div class="qty-row">
+          <label>Qty:</label>
+          <input type="number" name="quantity" value="1" min="1" max="{{ product.quantity }}" class="qty-input">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">🛒 Add to Cart</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <!-- Reviews -->
+    {% if reviews %}
+    <div class="detail-section">
+      <h3>Reviews</h3>
+      {% for r in reviews %}
+      <div class="review-item">
+        <div class="review-header">
+          <span class="review-name">{{ r.full_name }}</span>
+          <span class="review-stars">{% for i in range(1,6) %}{{ '★' if i <= r.rating else '☆' }}{% endfor %}</span>
+        </div>
+        {% if r.comment %}<p class="review-comment">{{ r.comment }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Manage Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block content %}
+<div class="filter-tabs">
+  {% for r, label in [('','All'),('farmer','Farmers'),('buyer','Buyers'),('driver','Drivers')] %}
+  <a href="{{ url_for('admin.users', role=r) }}" class="filter-tab {% if role_filter == r %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+<div class="search-bar-wrap">
+  <form method="get" class="search-form">
+    <input type="hidden" name="role" value="{{ role_filter }}">
+    <input type="text" name="q" value="{{ search }}" placeholder="Search name or email..." class="search-input">
+    <button type="submit" class="search-btn">Go</button>
+  </form>
+</div>
+<div class="manage-list">
+  {% for u in users %}
+  <div class="user-card">
+    <div class="user-avatar">{{ u.full_name[0].upper() }}</div>
+    <div class="user-info">
+      <div class="user-name">{{ u.full_name }}</div>
+      <div class="muted">{{ u.email }}</div>
+      <div class="user-meta">
+        <span class="role-badge role-{{ u.role }}">{{ u.role|capitalize }}</span>
+        {% if not u.is_approved and u.role != 'buyer' %}
+        <span class="status-pill status-pending">Pending</span>
+        {% elif u.is_active %}
+        <span class="status-pill status-delivered">Active</span>
+        {% else %}
+        <span class="status-pill status-cancelled">Inactive</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="user-actions">
+      {% if not u.is_approved and u.role != 'buyer' %}
+      <form method="post" action="{{ url_for('admin.approve_user', uid=u.id) }}">
+        <button type="submit" class="btn btn-sm btn-primary">✓ Approve</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('admin.toggle_user', uid=u.id) }}">
+        <button type="submit" class="btn btn-sm btn-outline">{{ 'Disable' if u.is_active else 'Enable' }}</button>
+      </form>
+      {% if u.id != current_user.id %}
+      <form method="post" action="{{ url_for('admin.delete_user', uid=u.id) }}" onsubmit="return confirm('Delete user?')">
+        <button type="submit" class="btn btn-sm btn-danger">Del</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

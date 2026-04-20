@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Deliveries{% endblock %}
+{% block page_title %}All Deliveries{% endblock %}
+{% block content %}
+<div class="filter-tabs">
+  {% for s, label in [('','All'),('shipped','In Transit'),('delivered','Delivered')] %}
+  <a href="{{ url_for('driver.deliveries', status=s) }}" class="filter-tab {% if status_filter == s %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+{% if not orders %}
+<div class="empty-state"><div class="empty-icon">🚚</div><h3>No deliveries</h3></div>
+{% else %}
+<div class="order-list">
+  {% for o in orders %}
+  <a href="{{ url_for('driver.delivery_detail', oid=o.id) }}" class="order-card">
+    <div class="order-card-top">
+      <span class="order-id">#{{ '%05d'|format(o.id) }}</span>
+      <span class="status-pill status-{{ o.status }}">{{ o.status|capitalize }}</span>
+    </div>
+    <div class="order-farm">👤 {{ o.buyer_name }} · {{ o.buyer_phone }}</div>
+    <div class="order-card-bottom">
+      <span class="muted">📍 {{ o.shipping_address[:50] }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

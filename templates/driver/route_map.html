@@ -1,0 +1,593 @@
+{% extends 'base.html' %}
+{% block title %}Route Map – AgriMarket{% endblock %}
+{% block page_title %}Route Map{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('driver.dashboard') }}" class="back-btn">‹</a>
+<span class="app-title">🗺️ Route Map</span>
+{% endblock %}
+{% block bottom_nav %}{% endblock %}
+{% block content_class %}rm-page{% endblock %}
+
+{% block content %}
+<!-- Map container -->
+<div id="map" class="rm-map"></div>
+
+<!-- Offline banner -->
+<div class="rm-offline-bar" id="offlineBar" style="display:none">
+  📵 Offline — using cached route
+</div>
+
+<!-- Floating HUD panel -->
+<div class="rm-hud" id="hud">
+  <!-- Header row -->
+  <div class="rm-hud-header">
+    <div class="rm-hud-title" id="hudTitle">Loading route...</div>
+    <div class="rm-hud-controls">
+      <button class="rm-icon-btn" onclick="toggleSatellite()" title="Satellite view" id="satBtn">🛰️</button>
+      <button class="rm-icon-btn" onclick="centerOnDriver()" title="My location">📍</button>
+      <button class="rm-icon-btn" onclick="toggleHud()" id="hudToggle">▼</button>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="rm-stats-bar">
+    <div class="rm-stat">
+      <span class="rm-stat-val" id="statStops">—</span>
+      <span class="rm-stat-label">Stops</span>
+    </div>
+    <div class="rm-stat-div"></div>
+    <div class="rm-stat">
+      <span class="rm-stat-val" id="statDist">—</span>
+      <span class="rm-stat-label">Distance</span>
+    </div>
+    <div class="rm-stat-div"></div>
+    <div class="rm-stat">
+      <span class="rm-stat-val" id="statETA">—</span>
+      <span class="rm-stat-label">ETA</span>
+    </div>
+    <div class="rm-stat-div"></div>
+    <div class="rm-stat">
+      <span class="rm-stat-val" id="statSpeed">0</span>
+      <span class="rm-stat-label">km/h</span>
+    </div>
+  </div>
+
+  <!-- Current direction -->
+  <div class="rm-direction-row" id="dirRow" style="display:none">
+    <div class="rm-dir-arrow" id="dirArrow">↑</div>
+    <div class="rm-dir-text">
+      <div class="rm-dir-main" id="dirMain">Continue straight</div>
+      <div class="rm-dir-sub" id="dirSub">—</div>
+    </div>
+  </div>
+
+  <!-- Stop list -->
+  <div class="rm-stop-list" id="stopList"></div>
+
+  <!-- Action buttons -->
+  <div class="rm-actions" id="rmActions">
+    <button class="rm-btn rm-btn-start" id="startBtn" onclick="startRoute()">
+      🚀 Start Route
+    </button>
+    <button class="rm-btn rm-btn-next" id="nextBtn" onclick="nextStop()" style="display:none">
+      ➡️ Next Stop
+    </button>
+  </div>
+</div>
+
+<!-- Stop detail popup -->
+<div class="rm-popup" id="stopPopup" style="display:none">
+  <div class="rm-popup-card">
+    <button class="rm-popup-close" onclick="closePopup()">✕</button>
+    <div class="rm-popup-stop-num" id="popupNum">Stop 1</div>
+    <div class="rm-popup-name" id="popupName"></div>
+    <div class="rm-popup-addr" id="popupAddr"></div>
+    <div class="rm-popup-row">
+      <span class="rm-popup-label">Contact</span>
+      <a class="rm-popup-phone" id="popupPhone" href="#"></a>
+    </div>
+    <div class="rm-popup-row">
+      <span class="rm-popup-label">Payment</span>
+      <span class="rm-popup-val" id="popupPayment"></span>
+    </div>
+    <div class="rm-popup-row">
+      <span class="rm-popup-label">Amount</span>
+      <span class="rm-popup-val" id="popupAmount"></span>
+    </div>
+    <div class="rm-popup-status" id="popupStatus"></div>
+    <div class="rm-popup-actions">
+      <button class="rm-btn rm-btn-nav" id="popupNavBtn" onclick="navigateToStop()">🧭 Navigate</button>
+      <button class="rm-btn rm-btn-deliver" id="popupDeliverBtn" onclick="markDelivered()">✅ Delivered</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet + plugins -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ── Data from server ───────────────────────────────────────
+const STOPS_DATA = {{ stops | tojson }};
+const DRIVER_ID  = {{ current_user.id }};
+
+// ── State ──────────────────────────────────────────────────
+let map, driverMarker, routeLayer, stopMarkers = [];
+let driverPos    = null;
+let stops        = [];
+let currentIdx   = 0;
+let routeStarted = false;
+let watchId      = null;
+let isSatellite  = false;
+let hudCollapsed = false;
+let activePopupStop = null;
+let stepList     = [];
+let currentStep  = 0;
+
+// Tile layers
+let osmLayer, satLayer;
+
+// ── Init map ───────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', {zoomControl: false, attributionControl: false});
+
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  });
+  satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: '© Esri'
+  });
+
+  osmLayer.addTo(map);
+
+  // Zoom controls top-right
+  L.control.zoom({position: 'topright'}).addTo(map);
+  L.control.attribution({position: 'bottomleft', prefix: false}).addTo(map);
+
+  // Driver marker
+  const driverIcon = L.divIcon({
+    className: '',
+    html: `<div class="rm-driver-icon">🚚</div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+  driverMarker = L.marker([6.3333, 124.9833], {icon: driverIcon, zIndexOffset: 1000});
+
+  map.setView([6.3333, 124.9833], 13); // Tupi, South Cotabato
+}
+
+// ── Geocode via Nominatim ──────────────────────────────────
+async function geocode(address) {
+  // Check localStorage cache first
+  const cacheKey = 'geo_' + btoa(address).slice(0, 20);
+  const cached   = localStorage.getItem(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  try {
+    const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=ph&viewbox=124.8,6.2,125.1,6.5&bounded=0`, {
+      headers: {'Accept-Language': 'en', 'User-Agent': 'AgriMarket/1.0'}
+    });
+    const data = await res.json();
+    if (data.length > 0) {
+      const coords = {lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon)};
+      localStorage.setItem(cacheKey, JSON.stringify(coords));
+      return coords;
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ── Fetch route from OSRM ──────────────────────────────────
+async function fetchRoute(waypoints) {
+  if (waypoints.length < 2) return null;
+  const cacheKey = 'route_' + waypoints.map(w => `${w.lat.toFixed(3)},${w.lng.toFixed(3)}`).join('|');
+  const cached   = localStorage.getItem(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  const coords = waypoints.map(w => `${w.lng},${w.lat}`).join(';');
+  const url    = `https://router.project-osrm.org/route/v1/driving/${coords}?steps=true&geometries=geojson&overview=full&annotations=false`;
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.code === 'Ok') {
+      localStorage.setItem(cacheKey, JSON.stringify(data.routes[0]));
+      return data.routes[0];
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ── Draw route polyline ────────────────────────────────────
+function drawRoute(geojson, color = '#2E7D32') {
+  if (routeLayer) map.removeLayer(routeLayer);
+  const coords = geojson.coordinates.map(c => [c[1], c[0]]);
+  routeLayer = L.polyline(coords, {
+    color, weight: 6, opacity: 0.85,
+    lineJoin: 'round', lineCap: 'round'
+  }).addTo(map);
+
+  // Animated dashes overlay
+  L.polyline(coords, {
+    color: 'white', weight: 2, opacity: 0.5,
+    dashArray: '8 12', dashOffset: '0'
+  }).addTo(map);
+}
+
+// ── Stop markers ───────────────────────────────────────────
+function addStopMarker(stop, idx) {
+  if (!stop.coords) return;
+  const isDone = stop.status === 'delivered';
+  const isCur  = idx === currentIdx && routeStarted;
+
+  const icon = L.divIcon({
+    className: '',
+    html: `<div class="rm-stop-marker ${isDone ? 'done' : ''} ${isCur ? 'current' : ''}">
+             <div class="rm-stop-num">${isDone ? '✓' : idx + 1}</div>
+             <div class="rm-stop-pulse ${isCur ? 'active' : ''}"></div>
+           </div>`,
+    iconSize: [36, 44],
+    iconAnchor: [18, 44]
+  });
+
+  const marker = L.marker([stop.coords.lat, stop.coords.lng], {icon})
+    .addTo(map)
+    .on('click', () => showStopPopup(idx));
+
+  stopMarkers.push(marker);
+}
+
+function refreshStopMarkers() {
+  stopMarkers.forEach(m => map.removeLayer(m));
+  stopMarkers = [];
+  stops.forEach((s, i) => addStopMarker(s, i));
+}
+
+// ── Stop list in HUD ───────────────────────────────────────
+function renderStopList() {
+  const el = document.getElementById('stopList');
+  el.innerHTML = stops.map((s, i) => {
+    const isDone = s.status === 'delivered';
+    const isCur  = i === currentIdx && routeStarted;
+    return `<div class="rm-stop-item ${isDone ? 'done' : ''} ${isCur ? 'current' : ''}" onclick="showStopPopup(${i})">
+      <div class="rm-stop-item-num ${isDone ? 'done' : isCur ? 'current' : ''}">${isDone ? '✓' : i + 1}</div>
+      <div class="rm-stop-item-info">
+        <div class="rm-stop-item-name">${s.buyer_name}</div>
+        <div class="rm-stop-item-addr">${s.shipping_address.substring(0, 45)}${s.shipping_address.length > 45 ? '…' : ''}</div>
+      </div>
+      <div class="rm-stop-item-right">
+        <div class="rm-stop-item-dist" id="dist_${s.id}">—</div>
+        <div class="rm-stop-item-status ${isDone ? 'done' : 'pending'}">${isDone ? 'Done' : 'Pending'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Show stop popup ────────────────────────────────────────
+function showStopPopup(idx) {
+  const s = stops[idx];
+  activePopupStop = idx;
+  document.getElementById('popupNum').textContent     = `Stop ${idx + 1} of ${stops.length}`;
+  document.getElementById('popupName').textContent    = s.buyer_name;
+  document.getElementById('popupAddr').textContent    = s.shipping_address;
+  // Show exact location badge
+  const addrEl = document.getElementById('popupAddr');
+  addrEl.textContent = s.shipping_address;
+  addrEl.innerHTML += s.coordSource === 'exact'
+    ? ' <span class="rm-exact-badge">📍 Exact</span>'
+    : ' <span class="rm-approx-badge">🔍 Approx</span>';
+  document.getElementById('popupPhone').textContent   = s.buyer_phone || s.contact_number || '—';
+  document.getElementById('popupPhone').href          = `tel:${s.buyer_phone || s.contact_number}`;
+  document.getElementById('popupPayment').textContent = (s.payment_method || 'COD').toUpperCase();
+  document.getElementById('popupAmount').textContent  = `₱${parseFloat(s.total_amount).toLocaleString('en-PH', {minimumFractionDigits: 2})}`;
+
+  const statusEl = document.getElementById('popupStatus');
+  statusEl.textContent  = s.status === 'delivered' ? '✅ Delivered' : '⏳ Pending';
+  statusEl.className    = 'rm-popup-status ' + (s.status === 'delivered' ? 'done' : 'pending');
+
+  const deliverBtn = document.getElementById('popupDeliverBtn');
+  deliverBtn.style.display = s.status === 'delivered' ? 'none' : 'block';
+
+  document.getElementById('stopPopup').style.display = 'flex';
+
+  // Pan map to stop
+  if (s.coords) map.panTo([s.coords.lat, s.coords.lng], {animate: true});
+}
+
+function closePopup() {
+  document.getElementById('stopPopup').style.display = 'none';
+  activePopupStop = null;
+}
+
+// ── Navigate to stop — in-system navigation ───────────────
+function navigateToStop() {
+  const s = stops[activePopupStop];
+  if (!s) return;
+  window.location.href = `/driver/deliveries/${s.id}/navigate`;
+}
+
+// ── Mark delivered ─────────────────────────────────────────
+async function markDelivered() {
+  const idx = activePopupStop;
+  if (idx === null) return;
+  const s = stops[idx];
+  if (!confirm(`Mark delivery to ${s.buyer_name} as delivered?`)) return;
+
+  try {
+    const res = await fetch(`/driver/api/stops/${s.id}/deliver`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({note: 'Delivered via route map'})
+    });
+    if (res.ok) {
+      stops[idx].status = 'delivered';
+      closePopup();
+      renderStopList();
+      refreshStopMarkers();
+      updateStats();
+      // Auto-advance to next pending stop
+      const nextPending = stops.findIndex((s, i) => i > idx && s.status !== 'delivered');
+      if (nextPending !== -1) {
+        currentIdx = nextPending;
+        await buildRouteFromCurrent();
+      }
+    }
+  } catch(e) {
+    // Offline — queue for later
+    queueOfflineAction(s.id);
+    stops[idx].status = 'delivered';
+    closePopup();
+    renderStopList();
+    refreshStopMarkers();
+  }
+}
+
+// ── Offline queue ──────────────────────────────────────────
+function queueOfflineAction(orderId) {
+  const queue = JSON.parse(localStorage.getItem('deliverQueue') || '[]');
+  if (!queue.includes(orderId)) queue.push(orderId);
+  localStorage.setItem('deliverQueue', JSON.stringify(queue));
+}
+
+async function flushOfflineQueue() {
+  const queue = JSON.parse(localStorage.getItem('deliverQueue') || '[]');
+  if (!queue.length) return;
+  const remaining = [];
+  for (const oid of queue) {
+    try {
+      const res = await fetch(`/driver/api/stops/${oid}/deliver`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({note: 'Delivered (synced from offline)'})
+      });
+      if (!res.ok) remaining.push(oid);
+    } catch(e) { remaining.push(oid); }
+  }
+  localStorage.setItem('deliverQueue', JSON.stringify(remaining));
+}
+
+// ── Build full route ───────────────────────────────────────
+async function buildRouteFromCurrent() {
+  const pending = stops.filter((s, i) => i >= currentIdx && s.status !== 'delivered' && s.coords);
+  if (!pending.length || !driverPos) return;
+
+  const waypoints = [driverPos, ...pending.map(s => s.coords)];
+  const route     = await fetchRoute(waypoints);
+
+  if (route) {
+    drawRoute(route.geometry);
+    stepList    = route.legs.flatMap(l => l.steps);
+    currentStep = 0;
+    updateDirectionHUD();
+
+    const totalDist = route.distance;
+    const totalDur  = route.duration;
+    document.getElementById('statDist').textContent = formatDist(totalDist);
+    document.getElementById('statETA').textContent  = formatETA(totalDur);
+  }
+
+  // Fit map to show all
+  const allCoords = [driverPos, ...pending.map(s => s.coords)].map(c => [c.lat, c.lng]);
+  if (allCoords.length > 1) map.fitBounds(allCoords, {padding: [60, 60]});
+}
+
+// ── Direction HUD ──────────────────────────────────────────
+function updateDirectionHUD() {
+  if (!stepList.length) return;
+  const step = stepList[currentStep];
+  if (!step) return;
+  document.getElementById('dirRow').style.display = 'flex';
+  document.getElementById('dirArrow').textContent = stepArrow(step.maneuver);
+  document.getElementById('dirMain').textContent  = step.name || step.maneuver.type || 'Continue';
+  document.getElementById('dirSub').textContent   = formatDist(step.distance);
+}
+
+function stepArrow(m) {
+  if (!m) return '↑';
+  const mod = m.modifier || '';
+  if (m.type === 'arrive') return '🏁';
+  if (m.type === 'depart') return '🚀';
+  if (mod.includes('sharp left'))  return '↰';
+  if (mod.includes('sharp right')) return '↱';
+  if (mod.includes('slight left')) return '↖';
+  if (mod.includes('slight right'))return '↗';
+  if (mod.includes('left'))  return '←';
+  if (mod.includes('right')) return '→';
+  if (mod === 'uturn') return '↩';
+  return '↑';
+}
+
+// ── Stats ──────────────────────────────────────────────────
+function updateStats() {
+  const pending = stops.filter(s => s.status !== 'delivered').length;
+  const done    = stops.filter(s => s.status === 'delivered').length;
+  document.getElementById('statStops').textContent = `${done}/${stops.length}`;
+  document.getElementById('hudTitle').textContent  =
+    pending === 0 ? '✅ All deliveries complete!' :
+    routeStarted  ? `Stop ${currentIdx + 1} of ${stops.length}` : `${stops.length} stops loaded`;
+
+  // Show/hide buttons
+  document.getElementById('startBtn').style.display = routeStarted ? 'none' : 'block';
+  document.getElementById('nextBtn').style.display  = routeStarted && pending > 0 ? 'block' : 'none';
+}
+
+// ── Start route ────────────────────────────────────────────
+async function startRoute() {
+  routeStarted = true;
+  currentIdx   = stops.findIndex(s => s.status !== 'delivered');
+  if (currentIdx === -1) currentIdx = 0;
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('nextBtn').style.display  = 'block';
+  await buildRouteFromCurrent();
+  renderStopList();
+  refreshStopMarkers();
+  updateStats();
+  if (stops[currentIdx] && stops[currentIdx].coords) {
+    map.panTo([stops[currentIdx].coords.lat, stops[currentIdx].coords.lng]);
+  }
+}
+
+// ── Next stop ──────────────────────────────────────────────
+async function nextStop() {
+  const next = stops.findIndex((s, i) => i > currentIdx && s.status !== 'delivered');
+  if (next === -1) {
+    alert('All stops completed! 🎉');
+    return;
+  }
+  currentIdx = next;
+  await buildRouteFromCurrent();
+  renderStopList();
+  refreshStopMarkers();
+  updateStats();
+  if (stops[currentIdx].coords) {
+    map.panTo([stops[currentIdx].coords.lat, stops[currentIdx].coords.lng]);
+    showStopPopup(currentIdx);
+  }
+}
+
+// ── Center on driver ───────────────────────────────────────
+function centerOnDriver() {
+  if (driverPos) map.panTo([driverPos.lat, driverPos.lng], {animate: true});
+}
+
+// ── Satellite toggle ───────────────────────────────────────
+function toggleSatellite() {
+  isSatellite = !isSatellite;
+  if (isSatellite) {
+    map.removeLayer(osmLayer);
+    satLayer.addTo(map);
+    document.getElementById('satBtn').style.background = 'rgba(46,125,50,.8)';
+  } else {
+    map.removeLayer(satLayer);
+    osmLayer.addTo(map);
+    document.getElementById('satBtn').style.background = '';
+  }
+}
+
+// ── HUD collapse ──────────────────────────────────────────
+function toggleHud() {
+  hudCollapsed = !hudCollapsed;
+  const hud = document.getElementById('hud');
+  hud.classList.toggle('collapsed', hudCollapsed);
+  document.getElementById('hudToggle').textContent = hudCollapsed ? '▲' : '▼';
+}
+
+// ── GPS tracking ──────────────────────────────────────────
+function startGPS() {
+  if (!navigator.geolocation) return;
+  watchId = navigator.geolocation.watchPosition(pos => {
+    driverPos = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+    const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : 0;
+    document.getElementById('statSpeed').textContent = speed;
+
+    // Update driver marker
+    driverMarker.setLatLng([driverPos.lat, driverPos.lng]);
+    if (!map.hasLayer(driverMarker)) driverMarker.addTo(map);
+
+    // Update distances to each stop
+    stops.forEach(s => {
+      if (s.coords) {
+        const d = haversine(driverPos, s.coords);
+        const el = document.getElementById(`dist_${s.id}`);
+        if (el) el.textContent = formatDist(d);
+      }
+    });
+
+    // Advance step
+    if (stepList.length && currentStep < stepList.length - 1) {
+      const step = stepList[currentStep];
+      const stepCoord = {lat: step.maneuver.location[1], lng: step.maneuver.location[0]};
+      if (haversine(driverPos, stepCoord) < 30) {
+        currentStep++;
+        updateDirectionHUD();
+      }
+    }
+
+    // Push location to server (every ~10s)
+    if (!startGPS._lastPush || Date.now() - startGPS._lastPush > 10000) {
+      startGPS._lastPush = Date.now();
+      fetch('/driver/api/location', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({lat: driverPos.lat, lng: driverPos.lng})
+      }).catch(() => {});
+    }
+  }, () => {}, {enableHighAccuracy: true, maximumAge: 3000, timeout: 10000});
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function haversine(a, b) {
+  const R = 6371000, dLat = (b.lat-a.lat)*Math.PI/180, dLng = (b.lng-a.lng)*Math.PI/180;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+function formatDist(m) { return m >= 1000 ? (m/1000).toFixed(1)+' km' : Math.round(m)+' m'; }
+function formatETA(s)  { const m = Math.round(s/60); return m < 60 ? m+' min' : Math.floor(m/60)+'h '+(m%60)+'m'; }
+
+// ── Offline detection ──────────────────────────────────────
+window.addEventListener('online',  () => { document.getElementById('offlineBar').style.display='none';  flushOfflineQueue(); });
+window.addEventListener('offline', () => { document.getElementById('offlineBar').style.display='flex'; });
+if (!navigator.onLine) document.getElementById('offlineBar').style.display = 'flex';
+
+// ── Main init ──────────────────────────────────────────────
+async function init() {
+  initMap();
+  startGPS();
+
+  // Load stops — use exact coords if available, else geocode
+  stops = STOPS_DATA.map(s => ({...s, coords: null}));
+
+  document.getElementById('hudTitle').textContent = 'Loading delivery locations...';
+
+  await Promise.all(stops.map(async (s, i) => {
+    const lat = parseFloat(s.buyer_lat || s.user_lat);
+    const lng = parseFloat(s.buyer_lng || s.user_lng);
+    if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+      stops[i].coords = {lat, lng};
+      stops[i].coordSource = 'exact';
+    } else {
+      stops[i].coords = await geocode(s.shipping_address);
+      stops[i].coordSource = 'geocoded';
+    }
+  }));
+
+  // Add markers
+  stops.forEach((s, i) => addStopMarker(s, i));
+
+  // Fit map to stops
+  const validCoords = stops.filter(s => s.coords).map(s => [s.coords.lat, s.coords.lng]);
+  if (validCoords.length) map.fitBounds(validCoords, {padding: [80, 80]});
+
+  renderStopList();
+  updateStats();
+
+  document.getElementById('hudTitle').textContent =
+    stops.length === 0 ? 'No active deliveries' : `${stops.length} stop${stops.length > 1 ? 's' : ''} ready`;
+
+  // Flush any offline queue
+  if (navigator.onLine) flushOfflineQueue();
+}
+
+window.addEventListener('load', init);
+</script>
+{% endblock %}

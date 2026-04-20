@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Home – AgriMarket{% endblock %}
+{% block page_title %}AgriMarket{% endblock %}
+{% block content %}
+<!-- Search bar -->
+<div class="search-bar-wrap">
+  <form method="get" action="{{ url_for('buyer.home') }}" class="search-form">
+    <input type="text" name="q" value="{{ search }}" placeholder="🔍 Search products..." class="search-input">
+    <button type="submit" class="search-btn">Search</button>
+  </form>
+</div>
+
+<!-- Categories -->
+<div class="section">
+  <div class="section-header"><h3>Categories</h3></div>
+  <div class="cat-scroll">
+    <a href="{{ url_for('buyer.home') }}" class="cat-chip {% if not cat_id %}active{% endif %}">All</a>
+    {% for c in categories %}
+    <a href="{{ url_for('buyer.home', cat=c.id) }}" class="cat-chip {% if cat_id|string == c.id|string %}active{% endif %}">
+      {{ c.icon }} {{ c.name }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Featured -->
+{% if featured and not search and not cat_id %}
+<div class="section">
+  <div class="section-header"><h3>⭐ Featured</h3><a href="{{ url_for('buyer.home') }}" class="see-all">See all</a></div>
+  <div class="featured-scroll">
+    {% for p in featured %}
+    <a href="{{ url_for('buyer.product_detail', pid=p.id) }}" class="featured-card">
+      <div class="featured-img">
+        {% if p.image_path %}<img src="{{ url_for('static', filename=p.image_path) }}" alt="{{ p.name }}">
+        {% else %}<span class="img-placeholder">🌿</span>{% endif %}
+      </div>
+      <div class="featured-info">
+        <div class="featured-name">{{ p.name }}</div>
+        <div class="featured-price">₱{{ "%.2f"|format(p.price|float) }}/{{ p.unit }}</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Products grid -->
+<div class="section">
+  <div class="section-header">
+    <h3>{% if search %}Results for "{{ search }}"{% elif cat_id %}{{ categories|selectattr('id','equalto',cat_id|int)|map(attribute='name')|first or 'Products' }}{% else %}All Products{% endif %}</h3>
+    <span class="count">{{ products|length }} items</span>
+  </div>
+  {% if not products %}
+  <div class="empty-state">
+    <div class="empty-icon">🌾</div>
+    <p>No products found.</p>
+    {% if search %}<a href="{{ url_for('buyer.home') }}" class="btn btn-outline">Clear search</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="product-grid">
+    {% for p in products %}
+    <div class="product-card">
+      <a href="{{ url_for('buyer.product_detail', pid=p.id) }}" class="product-card-link">
+        <div class="product-img">
+          {% if p.image_path %}<img src="{{ url_for('static', filename=p.image_path) }}" alt="{{ p.name }}">
+          {% else %}<span class="img-placeholder">🌿</span>{% endif %}
+          {% if p.quantity < 10 %}<span class="low-stock-badge">Low stock</span>{% endif %}
+        </div>
+        <div class="product-info">
+          <div class="product-cat">{{ p.cat_name or 'General' }}</div>
+          <div class="product-name">{{ p.name }}</div>
+          <div class="product-seller">🏡 {{ p.farm_name or p.seller_name }}</div>
+          <div class="product-price">₱{{ "%.2f"|format(p.price|float) }}<span class="unit">/{{ p.unit }}</span></div>
+        </div>
+      </a>
+      {% if current_user.role in ('buyer','farmer') and p.farmer_id != current_user.id %}
+      <form method="post" action="{{ url_for('buyer.cart_add') }}" class="quick-add-form">
+        <input type="hidden" name="product_id" value="{{ p.id }}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit" class="btn-add-cart">+ Cart</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

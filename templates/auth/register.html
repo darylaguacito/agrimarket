@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Register – AgriMarket{% endblock %}
+{% block auth_content %}
+<div class="auth-screen">
+  <div class="auth-hero">
+    <div class="auth-logo">🌾</div>
+    <h1>Join AgriMarket</h1>
+    <p>Connect farmers, buyers & drivers</p>
+  </div>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  <div class="auth-card">
+    <!-- Role selector -->
+    <div class="role-tabs" id="roleTabs">
+      {% for r, icon, label in [('buyer','🛒','Buyer'),('farmer','🌱','Farmer'),('driver','🚚','Driver')] %}
+      <button type="button" class="role-tab {% if loop.first %}active{% endif %}"
+              onclick="selectRole('{{ r }}')" data-role="{{ r }}">
+        <span>{{ icon }}</span><span>{{ label }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    <form method="post" class="auth-form" id="regForm">
+      <input type="hidden" name="role" id="roleInput" value="buyer">
+      <div class="field">
+        <label>Full Name</label>
+        <input type="text" name="full_name" placeholder="Juan dela Cruz" required>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" name="email" placeholder="you@example.com" required>
+      </div>
+      <div class="field">
+        <label>Phone</label>
+        <input type="tel" name="phone" placeholder="09XXXXXXXXX">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Min. 6 characters" required minlength="6">
+      </div>
+
+      <!-- Farmer fields -->
+      <div id="farmerFields" style="display:none">
+        <div class="field">
+          <label>Farm Name</label>
+          <input type="text" name="farm_name" placeholder="e.g. Green Valley Farm">
+        </div>
+        <div class="field">
+          <label>Farm Location</label>
+          <input type="text" name="farm_location" placeholder="e.g. Benguet, Philippines">
+        </div>
+        <div class="field">
+          <label>Main Product Type</label>
+          <select name="product_type">
+            <option value="">Select type</option>
+            {% for t in ['Vegetables','Fruits','Grains','Livestock','Dairy','Herbs','Mixed'] %}
+            <option>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Driver fields -->
+      <div id="driverFields" style="display:none">
+        <div class="field">
+          <label>Vehicle Type</label>
+          <select name="vehicle_type">
+            <option value="">Select vehicle</option>
+            {% for v in ['Motorcycle','Tricycle','Van','Truck','Pickup'] %}
+            <option>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>License Number</label>
+          <input type="text" name="license_number" placeholder="License plate / ID">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a></p>
+  </div>
+</div>
+<script>
+function selectRole(role) {
+  document.getElementById('roleInput').value = role;
+  document.querySelectorAll('.role-tab').forEach(t => t.classList.toggle('active', t.dataset.role === role));
+  document.getElementById('farmerFields').style.display = role === 'farmer' ? 'block' : 'none';
+  document.getElementById('driverFields').style.display = role === 'driver' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

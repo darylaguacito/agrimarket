@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Analytics{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="section-header"><h3>📈 Monthly Revenue (6 months)</h3></div>
+  {% if monthly %}
+  <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+  {% else %}
+  <div class="empty-state"><p>No data yet.</p></div>
+  {% endif %}
+</div>
+
+<div class="section">
+  <div class="section-header"><h3>🏆 Top Products</h3></div>
+  {% for p in top_products %}
+  <div class="top-prod-row">
+    <span class="top-prod-name">{{ p.name }}</span>
+    <span class="top-prod-sold">{{ p.sold }} sold</span>
+    <span class="top-prod-price">₱{{ "%.0f"|format(p.revenue|float) }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section">
+  <div class="section-header"><h3>🌱 Top Farmers</h3></div>
+  {% for f in top_farmers %}
+  <div class="top-prod-row">
+    <span class="top-prod-name">{{ f.farm_name or f.full_name }}</span>
+    <span class="top-prod-sold">{{ f.orders }} orders</span>
+    <span class="top-prod-price">₱{{ "%.0f"|format(f.revenue|float) }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section">
+  <div class="section-header"><h3>📦 Categories</h3></div>
+  {% for c in cat_stats %}
+  <div class="top-prod-row">
+    <span class="top-prod-name">{{ c.name }}</span>
+    <span class="top-prod-sold">{{ c.products }} products</span>
+    <span class="top-prod-price">{{ c.sold }} sold</span>
+  </div>
+  {% endfor %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+{% if monthly %}
+new Chart(document.getElementById('revenueChart'), {
+  type: 'line',
+  data: {
+    labels: {{ monthly|map(attribute='month')|list|tojson }},
+    datasets: [{
+      label: 'Revenue (₱)',
+      data: {{ monthly|map(attribute='revenue')|map('float')|list|tojson }},
+      borderColor: '#2E7D32', backgroundColor: 'rgba(46,125,50,.15)',
+      borderWidth: 3, tension: .4, fill: true,
+      pointBackgroundColor: '#fff', pointBorderColor: '#2E7D32', pointRadius: 5
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(0,0,0,.05)' } },
+      y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } }
+    }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

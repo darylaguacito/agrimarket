@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Delivery #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block page_title %}Delivery #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('driver.deliveries') }}" class="back-btn">‹</a>
+<span class="app-title">Delivery #{{ '%05d'|format(order.id) }}</span>
+{% endblock %}
+{% block content %}
+<div class="info-card">
+  <h3>📍 Delivery Address</h3>
+  <div class="address-big">{{ order.shipping_address }}</div>
+  <div style="display:flex;gap:.75rem;margin-top:.75rem">
+    <a href="{{ url_for('driver.navigate', oid=order.id) }}" class="btn btn-primary btn-full">
+      🧭 Start Navigation
+    </a>
+    <a href="{{ url_for('driver.route_map') }}" class="btn btn-outline btn-full">
+      🗺️ All Stops
+    </a>
+  </div>
+</div>
+<div class="info-card">
+  <h3>👤 Customer</h3>
+  <div class="info-row"><span>Name</span><span>{{ order.buyer_name }}</span></div>
+  <div class="info-row"><span>Phone</span><a href="tel:{{ order.buyer_phone }}" class="call-btn">📞 {{ order.buyer_phone }}</a></div>
+  <div class="info-row"><span>Payment</span><span>{{ order.payment_method|upper }}</span></div>
+  <div class="info-row"><span>Amount</span><strong>₱{{ "%.2f"|format(order.total_amount|float) }}</strong></div>
+</div>
+<div class="info-card">
+  <h3>📦 Items</h3>
+  {% for item in items %}
+  <div class="order-item-row">
+    <div class="order-item-info"><div>{{ item.name }}</div><div class="muted">× {{ item.quantity }}</div></div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if order.status == 'shipped' %}
+<div class="info-card">
+  <h3>✅ Update Delivery</h3>
+  <form method="post" action="{{ url_for('driver.update_delivery', oid=order.id) }}">
+    <input type="hidden" name="status" value="delivered">
+    <div class="field"><label>Note (optional)</label><input type="text" name="note" placeholder="e.g. Left at gate"></div>
+    <button type="submit" class="btn btn-primary btn-full btn-lg" onclick="return confirm('Mark as delivered?')">✅ Mark Delivered</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="info-card">
+  <h3>📍 Tracking</h3>
+  <div class="timeline">
+    {% for t in tracking %}
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-content">
+        <div class="timeline-status">{{ t.status|capitalize }}</div>
+        {% if t.note %}<div class="timeline-note">{{ t.note }}</div>{% endif %}
+        <div class="muted">{{ t.created_at|dt('%b %d, %I:%M %p') }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

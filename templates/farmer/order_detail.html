@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block page_title %}Order #{{ '%05d'|format(order.id) }}{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('farmer.orders') }}" class="back-btn">‹</a>
+<span class="app-title">Order #{{ '%05d'|format(order.id) }}</span>
+{% endblock %}
+{% block content %}
+<div class="info-card">
+  <h3>👤 Buyer</h3>
+  <div class="info-row"><span>Name</span><span>{{ order.buyer_name }}</span></div>
+  <div class="info-row"><span>Phone</span><a href="tel:{{ order.buyer_phone }}">{{ order.buyer_phone }}</a></div>
+  <div class="info-row"><span>Address</span><span>{{ order.shipping_address }}</span></div>
+  <div class="info-row"><span>Payment</span><span>{{ order.payment_method|upper }}</span></div>
+  <div class="info-row"><span>Total</span><strong>₱{{ "%.2f"|format(order.total_amount|float) }}</strong></div>
+  <div class="info-row"><span>Status</span><span class="status-pill status-{{ order.status }}">{{ order.status|capitalize }}</span></div>
+</div>
+
+<div class="info-card">
+  <h3>🛒 Items</h3>
+  {% for item in items %}
+  <div class="order-item-row">
+    {% if item.image_path %}<img src="{{ url_for('static', filename=item.image_path) }}" class="order-item-img">{% endif %}
+    <div class="order-item-info"><div>{{ item.name }}</div><div class="muted">{{ item.quantity }} {{ item.unit }}</div></div>
+    <div class="order-item-sub">₱{{ "%.2f"|format(item.price|float * item.quantity) }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if order.status not in ('delivered','cancelled') %}
+<div class="info-card">
+  <h3>⚡ Update Order</h3>
+  <form method="post" action="{{ url_for('farmer.order_update', oid=order.id) }}">
+    <div class="field">
+      <label>New Status</label>
+      <select name="status">
+        {% for s, label in [('confirmed','Confirmed'),('packed','Packed'),('shipped','Shipped'),('cancelled','Cancelled')] %}
+        <option value="{{ s }}" {{ 'selected' if order.status == s }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if drivers %}
+    <div class="field">
+      <label>Assign Driver</label>
+      <select name="driver_id">
+        <option value="">No driver yet</option>
+        {% for d in drivers %}
+        <option value="{{ d.id }}" {{ 'selected' if order.driver_id == d.id }}>{{ d.full_name }} ({{ d.vehicle_type }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="field"><label>Note</label><input type="text" name="note" placeholder="Optional note..."></div>
+    <button type="submit" class="btn btn-primary btn-full">Update Order</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="info-card">
+  <h3>📍 Tracking</h3>
+  <div class="timeline">
+    {% for t in tracking %}
+    <div class="timeline-item">
+      <div class="timeline-dot"></div>
+      <div class="timeline-content">
+        <div class="timeline-status">{{ t.status|capitalize }}</div>
+        {% if t.note %}<div class="timeline-note">{{ t.note }}</div>{% endif %}
+        <div class="muted">{{ t.created_at|dt('%b %d, %I:%M %p') }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

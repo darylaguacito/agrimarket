@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Driver Dashboard{% endblock %}
+{% block page_title %}My Deliveries{% endblock %}
+{% block content %}
+<div class="dash-greeting">
+  <div>
+    <h2>Hello, {{ current_user.full_name.split()[0] }}! 🚚</h2>
+    <p class="muted">{{ profile.vehicle_type if profile else 'Driver' }}</p>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:.5rem;align-items:flex-end">
+    <a href="{{ url_for('driver.route_map') }}" class="btn btn-primary btn-sm">🗺️ Route Map</a>
+    <form method="post" action="{{ url_for('driver.set_availability') }}">
+    <select name="availability" onchange="this.form.submit()" class="avail-select avail-{{ profile.availability if profile else 'available' }}">
+      {% for s, label in [('available','🟢 Available'),('busy','🟡 Busy'),('offline','🔴 Offline')] %}
+      <option value="{{ s }}" {{ 'selected' if profile and profile.availability == s }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    </form>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-icon">📦</div>
+    <div class="stat-val">{{ stats.total or 0 }}</div>
+    <div class="stat-label">Total</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon">✅</div>
+    <div class="stat-val">{{ stats.delivered or 0 }}</div>
+    <div class="stat-label">Delivered</div>
+  </div>
+  <div class="stat-card yellow">
+    <div class="stat-icon">🚚</div>
+    <div class="stat-val">{{ stats.active or 0 }}</div>
+    <div class="stat-label">Active</div>
+  </div>
+</div>
+
+{% if active %}
+<div class="section">
+  <div class="section-header"><h3>Active Deliveries</h3></div>
+  {% for o in active %}
+  <a href="{{ url_for('driver.delivery_detail', oid=o.id) }}" class="order-card urgent">
+    <div class="order-card-top">
+      <span class="order-id">#{{ '%05d'|format(o.id) }}</span>
+      <span class="status-pill status-shipped">In Transit</span>
+    </div>
+    <div class="order-farm">👤 {{ o.buyer_name }} · 📞 {{ o.buyer_phone }}</div>
+    <div class="order-card-bottom">
+      <span class="order-amount">₱{{ "%.2f"|format(o.total_amount|float) }}</span>
+      <span class="muted">📍 {{ o.shipping_address[:40] }}...</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="margin-top:2rem">
+  <div class="empty-icon">🚚</div>
+  <p>No active deliveries</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}My Orders – AgriMarket{% endblock %}
+{% block page_title %}My Orders{% endblock %}
+{% block content %}
+{% if not orders %}
+<div class="empty-state" style="margin-top:4rem">
+  <div class="empty-icon">📦</div>
+  <h3>No orders yet</h3>
+  <a href="{{ url_for('buyer.home') }}" class="btn btn-primary">Start Shopping</a>
+</div>
+{% else %}
+<div class="order-list">
+  {% for o in orders %}
+  <a href="{{ url_for('buyer.order_detail', oid=o.id) }}" class="order-card">
+    <div class="order-card-top">
+      <span class="order-id">#{{ '%05d'|format(o.id) }}</span>
+      <span class="status-pill status-{{ o.status }}">{{ o.status|capitalize }}</span>
+    </div>
+    <div class="order-farm">🏡 {{ o.farm_name or o.farmer_name }}</div>
+    <div class="order-card-bottom">
+      <span class="order-amount">₱{{ "%.2f"|format(o.total_amount|float) }}</span>
+      <span class="order-date">{{ o.created_at|dt('%b %d, %Y') }}</span>
+    </div>
+    {% if o.driver_name %}
+    <div class="order-driver">🚚 {{ o.driver_name }}</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

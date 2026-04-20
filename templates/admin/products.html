@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}All Products{% endblock %}
+{% block page_title %}Products{% endblock %}
+{% block content %}
+<div class="manage-list">
+  {% for p in products %}
+  <div class="manage-card">
+    <div class="manage-img">
+      {% if p.image_path %}<img src="{{ url_for('static', filename=p.image_path) }}" alt="{{ p.name }}">
+      {% else %}<span>🌿</span>{% endif %}
+    </div>
+    <div class="manage-info">
+      <div class="manage-name">{{ p.name }}</div>
+      <div class="muted">{{ p.farmer_name }} · {{ p.cat_name or 'General' }}</div>
+      <div class="manage-price">₱{{ "%.2f"|format(p.price|float) }}/{{ p.unit }}</div>
+      <div class="manage-stock">Stock: {{ p.quantity }}</div>
+    </div>
+    <div class="manage-actions">
+      <span class="status-pill status-{{ p.status }}">{{ p.status }}</span>
+      {% if p.is_featured %}<span class="featured-badge">⭐</span>{% endif %}
+      <form method="post" action="{{ url_for('admin.toggle_product', pid=p.id) }}">
+        <button type="submit" class="btn btn-sm btn-outline">{{ 'Disable' if p.status == 'active' else 'Enable' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('admin.feature_product', pid=p.id) }}">
+        <button type="submit" class="btn btn-sm btn-outline">{{ '★ Unfeature' if p.is_featured else '☆ Feature' }}</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
