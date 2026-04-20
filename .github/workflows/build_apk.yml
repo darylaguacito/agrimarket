@@ -26,36 +26,54 @@ jobs:
           libtinfo5 cmake libffi-dev libssl-dev \
           build-essential ccache
 
-    - name: Set up Java 17
+    - name: Install buildozer and dependencies
       run: |
-        echo "JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64" >> $GITHUB_ENV
-        echo "/usr/lib/jvm/temurin-17-jdk-amd64/bin" >> $GITHUB_PATH
+        pip install buildozer==1.5.0 cython==0.29.36
 
-    - name: Install buildozer
-      run: pip install buildozer==1.5.0 cython==0.29.36
-
-    - name: Cache buildozer global
+    - name: Cache buildozer
       uses: actions/cache@v4
       with:
         path: ~/.buildozer
-        key: buildozer-${{ hashFiles('buildozer.spec') }}-v2
+        key: buildozer-v3-${{ hashFiles('buildozer.spec') }}
 
-    - name: Accept Android SDK licenses
+    - name: Pre-install Android SDK cmdline-tools
+      run: |
+        # Download and set up Android cmdline-tools manually
+        mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+        cd ~/.buildozer/android/platform/android-sdk/cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip -q commandlinetools-linux-9477386_latest.zip
+        mv cmdline-tools latest
+        rm commandlinetools-linux-9477386_latest.zip
+
+        # Accept all licenses
+        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/.buildozer/android/platform/android-sdk --licenses || true
+
+        # Install required SDK components
+        ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+          --sdk_root=$HOME/.buildozer/android/platform/android-sdk \
+          "platform-tools" \
+          "build-tools;33.0.2" \
+          "platforms;android-33"
+
+        # Create tools/bin/sdkmanager symlink for buildozer compatibility
+        mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin
+        ln -sf ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+               ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+
+    - name: Accept SDK licenses files
       run: |
         mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-        echo "504667f4c0de7af1a06de9f4b1727b84351f2910" > ~/.buildozer/android/platform/android-sdk/licenses/android-googletv-license
-        echo "33b6a2b64607f11b759f320ef9dff4ae5c47d97a" > ~/.buildozer/android/platform/android-sdk/licenses/google-gdk-license
+        printf "24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e" \
+          > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        printf "84831b9409646a918e30573bab4c9c91346d8abd" \
+          > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
 
     - name: Build APK
-      run: |
-        yes | buildozer -v android debug 2>&1 || buildozer -v android debug
+      run: buildozer -v android debug
 
     - name: Find APK
-      run: find . -name "*.apk" 2>/dev/null
+      run: find . -name "*.apk" 2>/dev/null || echo "No APK found"
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
