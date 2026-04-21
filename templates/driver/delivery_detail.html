@@ -6,6 +6,7 @@
 <span class="app-title">Delivery #{{ '%05d'|format(order.id) }}</span>
 {% endblock %}
 {% block content %}
+
 <div class="info-card">
   <h3>📍 Delivery Address</h3>
   <div class="address-big">{{ order.shipping_address }}</div>
@@ -18,6 +19,7 @@
     </a>
   </div>
 </div>
+
 <div class="info-card">
   <h3>👤 Customer</h3>
   <div class="info-row"><span>Name</span><span>{{ order.buyer_name }}</span></div>
@@ -25,23 +27,74 @@
   <div class="info-row"><span>Payment</span><span>{{ order.payment_method|upper }}</span></div>
   <div class="info-row"><span>Amount</span><strong>₱{{ "%.2f"|format(order.total_amount|float) }}</strong></div>
 </div>
+
 <div class="info-card">
   <h3>📦 Items</h3>
   {% for item in items %}
   <div class="order-item-row">
-    <div class="order-item-info"><div>{{ item.name }}</div><div class="muted">× {{ item.quantity }}</div></div>
+    <div class="order-item-info">
+      <div>{{ item.name }}</div>
+      <div class="muted">× {{ item.quantity }}</div>
+    </div>
   </div>
   {% endfor %}
 </div>
 
 {% if order.status == 'shipped' %}
 <div class="info-card">
-  <h3>✅ Update Delivery</h3>
-  <form method="post" action="{{ url_for('driver.update_delivery', oid=order.id) }}">
+  <h3>✅ Mark as Delivered</h3>
+  <form method="post" action="{{ url_for('driver.update_delivery', oid=order.id) }}"
+        enctype="multipart/form-data" id="deliverForm">
     <input type="hidden" name="status" value="delivered">
-    <div class="field"><label>Note (optional)</label><input type="text" name="note" placeholder="e.g. Left at gate"></div>
-    <button type="submit" class="btn btn-primary btn-full btn-lg" onclick="return confirm('Mark as delivered?')">✅ Mark Delivered</button>
+
+    <!-- Proof photo section -->
+    <div class="proof-section">
+      <div class="proof-label">📸 Delivery Proof Photo <span class="proof-optional">(recommended)</span></div>
+
+      <!-- Preview -->
+      <div class="proof-preview" id="proofPreview" style="display:none">
+        <img id="proofImg" src="" alt="Proof photo">
+        <button type="button" class="proof-remove" onclick="removeProof()">✕ Remove</button>
+      </div>
+
+      <!-- Upload / Camera buttons -->
+      <div class="proof-actions" id="proofActions">
+        <button type="button" class="proof-btn proof-btn-cam" onclick="openCamera()">
+          📷 Take Photo
+        </button>
+        <label class="proof-btn proof-btn-upload">
+          🖼️ Upload Photo
+          <input type="file" name="proof_photo" id="proofFile" accept="image/*" style="display:none"
+                 onchange="previewFile(this)">
+        </label>
+      </div>
+
+      <!-- Hidden camera capture input -->
+      <input type="file" name="proof_photo" id="cameraCapture" accept="image/*"
+             capture="environment" style="display:none" onchange="previewFile(this)">
+    </div>
+
+    <div class="field" style="margin-top:.75rem">
+      <label>Note (optional)</label>
+      <input type="text" name="note" placeholder="e.g. Left at gate, received by family member">
+    </div>
+    <button type="submit" class="btn btn-primary btn-full btn-lg"
+            onclick="return confirm('Mark this order as delivered?')">
+      ✅ Confirm Delivery
+    </button>
   </form>
+</div>
+{% endif %}
+
+{% if order.delivery_proof %}
+<div class="info-card">
+  <h3>📸 Delivery Proof</h3>
+  <div class="proof-photo-wrap">
+    <img src="{{ url_for('static', filename=order.delivery_proof) }}"
+         alt="Delivery proof" class="proof-photo-full"
+         onclick="this.classList.toggle('proof-photo-zoom')">
+    <div class="muted" style="margin-top:.5rem;font-size:.78rem">Tap photo to enlarge</div>
+  </div>
 </div>
 {% endif %}
 
@@ -60,4 +113,35 @@
     {% endfor %}
   </div>
 </div>
+
+<script>
+function openCamera() {
+  document.getElementById('cameraCapture').click();
+}
+
+function previewFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  // Sync to the main form input if using camera capture
+  if (input.id === 'cameraCapture') {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('proofFile').files = dt.files;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('proofImg').src = e.target.result;
+    document.getElementById('proofPreview').style.display = 'block';
+    document.getElementById('proofActions').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeProof() {
+  document.getElementById('proofFile').value = '';
+  document.getElementById('cameraCapture').value = '';
+  document.getElementById('proofPreview').style.display = 'none';
+  document.getElementById('proofActions').style.display = 'flex';
+}
+</script>
 {% endblock %}

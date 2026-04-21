@@ -25,8 +25,8 @@
   </div>
 </div>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leaflet.css') }}">
+<script src="{{ url_for('static', filename='js/leaflet.js') }}"></script>
 <script>
 (function() {
   const LAT_FIELD  = '{{ lat_field }}';

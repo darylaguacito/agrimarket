@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Messages{% endblock %}
+{% block page_title %}💬 Messages{% endblock %}
+
+{% block content %}
+<div class="inbox-wrap">
+  {% if convos %}
+    {% for c in convos %}
+    <a href="{{ url_for('msg.thread', oid=c.order_id) }}" class="convo-card {% if c.unread %}convo-unread{% endif %}">
+      <div class="convo-avatar">{{ c.other_name[0].upper() }}</div>
+      <div class="convo-body">
+        <div class="convo-top">
+          <span class="convo-name">{{ c.other_name }}</span>
+          <span class="convo-time">{{ c.last_at | dt }}</span>
+        </div>
+        <div class="convo-sub">
+          <span class="convo-preview">{{ c.last_msg or 'No messages yet' }}</span>
+          {% if c.unread %}<span class="convo-badge">{{ c.unread }}</span>{% endif %}
+        </div>
+        <div class="convo-order">Order #{{ c.order_id }} · ₱{{ '%.2f'|format(c.total_amount) }} · <span class="status-pill status-{{ c.status }}">{{ c.status }}</span></div>
+      </div>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <div style="font-size:3rem">💬</div>
+      <p>No conversations yet.</p>
+      <p style="color:var(--muted);font-size:.9rem">Messages appear here once you place or receive an order.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

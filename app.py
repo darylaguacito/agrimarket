@@ -41,8 +41,9 @@ def create_app():
     from routes.driver        import driver_bp
     from routes.admin         import admin_bp
     from routes.notifications import notif_bp
+    from routes.messages      import msg_bp
 
-    for bp in (auth_bp, buyer_bp, farmer_bp, driver_bp, admin_bp, notif_bp):
+    for bp in (auth_bp, buyer_bp, farmer_bp, driver_bp, admin_bp, notif_bp, msg_bp):
         app.register_blueprint(bp)
 
     # ── /connect — QR code page for phone access ──
@@ -59,6 +60,10 @@ def create_app():
     @app.route('/connect')
     def connect_page():
         return rt('connect.html', url=f'http://{_ip}:5001')
+
+    @app.route('/offline')
+    def offline_page():
+        return rt('offline.html')
 
     app.teardown_appcontext(close_db)
     return app

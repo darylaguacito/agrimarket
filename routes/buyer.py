@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from db import query, get_db
-from notifs import push, push_many, admins
+from notifs import push, push_many, admins, send_sms
 
 buyer_bp = Blueprint('buyer', __name__, url_prefix='/buyer')
 
@@ -10,7 +10,7 @@ def buyer_required(f):
     @wraps(f)
     @login_required
     def decorated(*a, **kw):
-        if current_user.role not in ('buyer', 'farmer'):
+        if current_user.role != 'buyer':
             flash('Access denied.', 'error')
             return redirect(url_for('auth.login'))
         return f(*a, **kw)
@@ -156,6 +156,12 @@ def checkout():
                                (oid, i['product_id'], i['quantity'], i['price']))
                     db.execute("UPDATE products SET quantity=quantity-? WHERE id=?",
                                (i['quantity'], i['product_id']))
+                    # Check low stock after deduction
+                    new_stock = db.execute("SELECT quantity,name,unit,farmer_id FROM products WHERE id=?",
+                                           (i['product_id'],)).fetchone()
+                    if new_stock and new_stock[0] <= 10:
+                        push(new_stock[3], '⚠️ Low Stock Alert',
+                             f"{new_stock[1]} has only {new_stock[0]} {new_stock[2]} left after this order!", 'info')
                 db.execute("INSERT INTO order_tracking (order_id,status,note,updated_by) VALUES (?,'pending','Order placed',?)",
                            (oid, current_user.id))
                 db.commit()
@@ -177,13 +183,17 @@ def checkout():
 @buyer_bp.route('/orders')
 @buyer_required
 def orders():
+    status = request.args.get('status', '')
+    where, params = "WHERE o.buyer_id=?", [current_user.id]
+    if status:
+        where += " AND o.status=?"; params.append(status)
     orders = query(
-        "SELECT o.*,u.full_name as farmer_name,fp.farm_name,d.full_name as driver_name "
-        "FROM orders o JOIN users u ON o.farmer_id=u.id "
-        "LEFT JOIN farmer_profiles fp ON u.id=fp.user_id "
-        "LEFT JOIN users d ON o.driver_id=d.id "
-        "WHERE o.buyer_id=? ORDER BY o.created_at DESC",
-        (current_user.id,), fetchall=True) or []
+        f"SELECT o.*,u.full_name as farmer_name,fp.farm_name,d.full_name as driver_name "
+        f"FROM orders o JOIN users u ON o.farmer_id=u.id "
+        f"LEFT JOIN farmer_profiles fp ON u.id=fp.user_id "
+        f"LEFT JOIN users d ON o.driver_id=d.id "
+        f"{where} ORDER BY o.created_at DESC",
+        params, fetchall=True) or []
     return render_template('buyer/orders.html', orders=orders)
 
 @buyer_bp.route('/orders/<int:oid>')
@@ -228,6 +238,63 @@ def submit_review(oid):
     db.commit()
     flash('Review submitted!', 'success')
     return redirect(url_for('buyer.order_detail', oid=oid))
+
+@buyer_bp.route('/orders/<int:oid>/cancel', methods=['GET', 'POST'])
+@buyer_required
+def cancel_order(oid):
+    order = query("SELECT o.*,u.phone as farmer_phone,u.full_name as farmer_name "
+                  "FROM orders o JOIN users u ON o.farmer_id=u.id "
+                  "WHERE o.id=? AND o.buyer_id=?", (oid, current_user.id), fetchone=True)
+    if not order:
+        flash('Order not found.', 'error')
+        return redirect(url_for('buyer.orders'))
+    if order['status'] not in ('pending', 'confirmed'):
+        flash('This order cannot be cancelled.', 'error')
+        return redirect(url_for('buyer.order_detail', oid=oid))
+
+    CANCEL_REASONS = [
+        'Changed my mind',
+        'Ordered by mistake',
+        'Found a better price elsewhere',
+        'Delivery taking too long',
+        'Product no longer needed',
+        'Other',
+    ]
+
+    if request.method == 'POST':
+        reason_choice = request.form.get('reason_choice', '')
+        reason_other  = request.form.get('reason_other', '').strip()
+        reason = reason_other if reason_choice == 'Other' else reason_choice
+        if not reason:
+            flash('Please select a cancellation reason.', 'error')
+            return render_template('buyer/cancel_order.html', order=order, reasons=CANCEL_REASONS)
+
+        db = get_db()
+        db.execute("UPDATE orders SET status='cancelled',cancelled_reason=? WHERE id=?", (reason, oid))
+        db.execute("INSERT INTO order_tracking (order_id,status,note,updated_by) VALUES (?,'cancelled',?,?)",
+                   (oid, f'Cancelled by buyer: {reason}', current_user.id))
+        # Restore stock
+        items = db.execute("SELECT product_id,quantity FROM order_items WHERE order_id=?", (oid,)).fetchall()
+        for item in items:
+            db.execute("UPDATE products SET quantity=quantity+? WHERE id=?", (item[1], item[0]))
+        db.commit()
+
+        push(order['farmer_id'], f'❌ Order #{oid} Cancelled',
+             f"Buyer cancelled order. Reason: {reason}", 'order', oid)
+        push_many(admins(), f'❌ Order #{oid} Cancelled',
+                  f"{current_user.full_name} cancelled order #{oid}. Reason: {reason}", 'order', oid)
+        # SMS the farmer
+        farmer = query("SELECT phone, full_name FROM users WHERE id=?", (order['farmer_id'],), fetchone=True)
+        if farmer and farmer.get('phone'):
+            send_sms(farmer['phone'],
+                     f"Hi {farmer['full_name']}, Order #{oid} has been CANCELLED by the buyer. "
+                     f"Reason: {reason}. Stock has been restored.")
+
+        flash('Order cancelled successfully.', 'success')
+        return redirect(url_for('buyer.orders'))
+
+    return render_template('buyer/cancel_order.html', order=order, reasons=CANCEL_REASONS)
+
 
 @buyer_bp.route('/profile', methods=['GET', 'POST'])
 @login_required

@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}Cancel Order{% endblock %}
+{% block page_title %}Cancel Order{% endblock %}
+{% block app_bar_left %}
+<a href="{{ url_for('buyer.order_detail', oid=order.id) }}" class="back-btn">‹</a>
+<span class="app-title">Cancel Order</span>
+{% endblock %}
+{% block content %}
+<div class="cancel-warn">
+  <div class="cancel-warn-icon">⚠️</div>
+  <div>
+    <div class="cancel-warn-title">Cancel Order #{{ '%05d'|format(order.id) }}?</div>
+    <div class="cancel-warn-sub">This action cannot be undone. Stock will be restored.</div>
+  </div>
+</div>
+
+<div class="info-card">
+  <h3>Select Reason</h3>
+  <form method="post" id="cancelForm">
+    <div class="reason-list">
+      {% for r in reasons %}
+      <label class="reason-opt">
+        <input type="radio" name="reason_choice" value="{{ r }}" required
+               {% if r == 'Other' %}onchange="document.getElementById('otherBox').style.display='block'"{% else %}onchange="document.getElementById('otherBox').style.display='none'"{% endif %}>
+        <span class="reason-label">{{ r }}</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div id="otherBox" style="display:none;margin-top:.75rem">
+      <div class="field">
+        <label>Please specify</label>
+        <textarea name="reason_other" rows="3" class="form-input" placeholder="Tell us more..."></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:.75rem;margin-top:1.25rem">
+      <button type="submit" class="btn btn-danger btn-full"
+              onclick="return confirm('Are you sure you want to cancel this order?')">
+        ❌ Confirm Cancellation
+      </button>
+      <a href="{{ url_for('buyer.order_detail', oid=order.id) }}" class="btn btn-outline btn-full">
+        Keep Order
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

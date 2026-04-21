@@ -2,7 +2,7 @@ import os, uuid
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 from db import query, get_db
-from notifs import push
+from notifs import push, send_sms
 
 farmer_bp = Blueprint('farmer', __name__, url_prefix='/farmer')
 
@@ -94,11 +94,17 @@ def product_form(pid=None):
                   "category_id=?,is_featured=?,status=?,image_path=? WHERE id=?",
                   (name, desc, price, qty, unit, cat_id, featured, status, img_path, pid), commit=True)
             flash('Product updated.', 'success')
+            if int(qty) <= 10:
+                push(current_user.id, '⚠️ Low Stock Alert',
+                     f"{name} has only {qty} {unit} left. Please restock soon!", 'info')
         else:
             query("INSERT INTO products (farmer_id,name,description,price,quantity,unit,"
                   "category_id,is_featured,status,image_path) VALUES (?,?,?,?,?,?,?,?,?,?)",
                   (current_user.id, name, desc, price, qty, unit, cat_id, featured, status, img_path), commit=True)
             flash('Product added.', 'success')
+            if int(qty) <= 10:
+                push(current_user.id, '⚠️ Low Stock',
+                     f"{name} was added with only {qty} {unit}. Consider adding more stock.", 'info')
         return redirect(url_for('farmer.products'))
 
     return render_template('farmer/product_form.html', product=product, categories=categories)
@@ -164,6 +170,24 @@ def order_update(oid):
                (oid, new_status, note, current_user.id))
     db.commit()
     push(order['buyer_id'], f'📦 Order #{oid}', f"Status: {new_status.upper()}", 'order', oid)
+    if new_status == 'confirmed':
+        buyer = query("SELECT phone, full_name FROM users WHERE id=?", (order['buyer_id'],), fetchone=True)
+        if buyer and buyer.get('phone'):
+            send_sms(
+                buyer['phone'],
+                f"Hi {buyer['full_name']}, your AgriMarket Order #{oid} has been CONFIRMED by the seller. "
+                f"Total: PHP {order['total_amount']:,.2f}. Thank you!"
+            )
+    elif new_status == 'packed':
+        buyer = query("SELECT phone, full_name FROM users WHERE id=?", (order['buyer_id'],), fetchone=True)
+        if buyer and buyer.get('phone'):
+            send_sms(buyer['phone'],
+                     f"Hi {buyer['full_name']}, your AgriMarket Order #{oid} is now PACKED and ready for pickup by the driver.")
+    elif new_status == 'cancelled':
+        buyer = query("SELECT phone, full_name FROM users WHERE id=?", (order['buyer_id'],), fetchone=True)
+        if buyer and buyer.get('phone'):
+            send_sms(buyer['phone'],
+                     f"Hi {buyer['full_name']}, unfortunately your AgriMarket Order #{oid} has been CANCELLED by the seller.")
     flash('Order updated.', 'success')
     return redirect(url_for('farmer.order_detail', oid=oid))
 

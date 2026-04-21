@@ -4,7 +4,7 @@ Usage: python init_db.py
 """
 import sqlite3, bcrypt, os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'agrimarket.db')
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else os.getcwd(), 'agrimarket.db')
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS orders (
     estimated_delivery TEXT,
     notes            TEXT,
     cancelled_reason TEXT,
+    delivery_proof   TEXT,
     created_at       TEXT    DEFAULT (datetime('now','localtime')),
     updated_at       TEXT    DEFAULT (datetime('now','localtime'))
 );
@@ -138,6 +139,19 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at TEXT    DEFAULT (datetime('now','localtime')),
     UNIQUE(order_id, buyer_id)
 );
+
+CREATE TABLE IF NOT EXISTS messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id    INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    sender_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body        TEXT    NOT NULL,
+    is_read     INTEGER DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_order ON messages(order_id);
+CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id, is_read);
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_products_farmer   ON products(farmer_id);

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block title %}Chat with {{ other.full_name }}{% endblock %}
+{% block page_title %}
+  <a href="{{ url_for('msg.inbox') }}" style="text-decoration:none;color:var(--green)">‹</a>
+  {{ other.full_name }}
+{% endblock %}
+
+{% block content %}
+<div class="thread-wrap">
+  <div class="thread-order-bar">
+    Order #{{ order.id }} · ₱{{ '%.2f'|format(order.total_amount) }} ·
+    <span class="status-pill status-{{ order.status }}">{{ order.status }}</span>
+    <a href="{% if current_user.role == 'buyer' %}{{ url_for('buyer.order_detail', oid=order.id) }}{% else %}{{ url_for('farmer.order_detail', oid=order.id) }}{% endif %}"
+       style="margin-left:.5rem;font-size:.8rem;color:var(--blue)">View Order →</a>
+  </div>
+
+  <div class="thread-messages" id="msgList">
+    {% for m in msgs %}
+    <div class="msg-row {% if m.sender_id == current_user.id %}msg-mine{% else %}msg-theirs{% endif %}" data-id="{{ m.id }}">
+      <div class="msg-bubble">
+        <p>{{ m.body }}</p>
+        <span class="msg-time">{{ m.created_at | dt }}</span>
+      </div>
+    </div>
+    {% endfor %}
+    {% if not msgs %}
+    <div class="empty-state" style="padding:2rem 0">
+      <p style="color:var(--muted)">No messages yet. Say hello 👋</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <form class="thread-input" id="msgForm" method="POST">
+    <textarea name="body" id="msgBody" placeholder="Type a message…" rows="1" maxlength="1000" required></textarea>
+    <button type="submit" class="btn-send">➤</button>
+  </form>
+</div>
+
+<script>
+(function(){
+  const list   = document.getElementById('msgList');
+  const form   = document.getElementById('msgForm');
+  const body   = document.getElementById('msgBody');
+  const myId   = {{ current_user.id }};
+  const oid    = {{ order.id }};
+
+  // Scroll to bottom
+  function scrollBottom(){ list.scrollTop = list.scrollHeight; }
+  scrollBottom();
+
+  // Auto-grow textarea
+  body.addEventListener('input', function(){
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  // Send on Enter (Shift+Enter = newline)
+  body.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); }
+  });
+
+  // Get last message id for polling
+  function lastId(){
+    const rows = list.querySelectorAll('.msg-row[data-id]');
+    return rows.length ? parseInt(rows[rows.length-1].dataset.id) : 0;
+  }
+
+  function renderMsg(m){
+    const mine = m.sender_id === myId;
+    const div  = document.createElement('div');
+    div.className = 'msg-row ' + (mine ? 'msg-mine' : 'msg-theirs');
+    div.dataset.id = m.id;
+    div.innerHTML = `<div class="msg-bubble"><p>${escHtml(m.body)}</p><span class="msg-time">${m.created_at}</span></div>`;
+    list.appendChild(div);
+    scrollBottom();
+  }
+
+  function escHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  }
+
+  // AJAX send
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    const txt = body.value.trim();
+    if(!txt) return;
+    fetch(window.location.href, {
+      method: 'POST',
+      headers: {'Content-Type':'application/x-www-form-urlencoded'},
+      body: 'body=' + encodeURIComponent(txt)
+    }).then(r => {
+      if(r.redirected || r.ok){
+        body.value = '';
+        body.style.height = 'auto';
+        poll();
+      }
+    });
+  });
+
+  // Live polling every 4 seconds
+  function poll(){
+    fetch(`/messages/api/order/${oid}/poll?after=${lastId()}`)
+      .then(r => r.json())
+      .then(msgs => msgs.forEach(renderMsg));
+  }
+  setInterval(poll, 4000);
+})();
+</script>
+{% endblock %}

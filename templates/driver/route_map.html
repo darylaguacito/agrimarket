@@ -25,6 +25,7 @@
     <div class="rm-hud-controls">
       <button class="rm-icon-btn" onclick="toggleSatellite()" title="Satellite view" id="satBtn">🛰️</button>
       <button class="rm-icon-btn" onclick="centerOnDriver()" title="My location">📍</button>
+      <button class="rm-icon-btn" onclick="downloadOffline()" title="Download for offline" id="dlBtn">⬇️</button>
       <button class="rm-icon-btn" onclick="toggleHud()" id="hudToggle">▼</button>
     </div>
   </div>
@@ -103,8 +104,8 @@
 </div>
 
 <!-- Leaflet + plugins -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leaflet.css') }}">
+<script src="{{ url_for('static', filename='js/leaflet.js') }}"></script>
 
 <script>
 // ── Data from server ───────────────────────────────────────
@@ -549,6 +550,48 @@ window.addEventListener('online',  () => { document.getElementById('offlineBar')
 window.addEventListener('offline', () => { document.getElementById('offlineBar').style.display='flex'; });
 if (!navigator.onLine) document.getElementById('offlineBar').style.display = 'flex';
 
+// ── Pre-cache map tiles for Tupi area ─────────────────────
+async function preCacheTiles() {
+  if (!navigator.onLine) return;
+  const cache = await caches.open('agrimarket-tiles-v1');
+  // Tupi, South Cotabato bounding box — zoom 12-15
+  const bounds = {minLat:6.2, maxLat:6.5, minLng:124.8, maxLng:125.1};
+  const zooms  = [12, 13, 14, 15];
+  let count = 0;
+  for (const z of zooms) {
+    const minX = lng2tile(bounds.minLng, z), maxX = lng2tile(bounds.maxLng, z);
+    const minY = lat2tile(bounds.maxLat, z), maxY = lat2tile(bounds.minLat, z);
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        const url = `https://a.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+        if (!await cache.match(url)) {
+          try { await cache.add(url); count++; } catch(e) {}
+        }
+      }
+    }
+  }
+  if (count > 0) console.log(`[Cache] Pre-cached ${count} map tiles for offline use`);
+}
+// ── Download offline tiles ─────────────────────────────────
+async function downloadOffline() {
+  const btn = document.getElementById('dlBtn');
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  document.getElementById('hudTitle').textContent = 'Downloading map tiles...';
+  await preCacheTiles();
+  // Also cache stop coords
+  stops.forEach(s => {
+    if (s.coords) {
+      const key = 'geo_' + btoa(s.shipping_address).slice(0,20);
+      localStorage.setItem(key, JSON.stringify(s.coords));
+    }
+  });
+  btn.textContent = '✅';
+  btn.disabled = false;
+  document.getElementById('hudTitle').textContent = 'Map saved for offline use!';
+  setTimeout(() => updateStats(), 2000);
+}
+
 // ── Main init ──────────────────────────────────────────────
 async function init() {
   initMap();
@@ -585,7 +628,10 @@ async function init() {
     stops.length === 0 ? 'No active deliveries' : `${stops.length} stop${stops.length > 1 ? 's' : ''} ready`;
 
   // Flush any offline queue
-  if (navigator.onLine) flushOfflineQueue();
+  if (navigator.onLine) {
+    flushOfflineQueue();
+    preCacheTiles(); // pre-cache Tupi area tiles for offline use
+  }
 }
 
 window.addEventListener('load', init);

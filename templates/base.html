@@ -2,15 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#2E7D32">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AgriMarket">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
 <title>{% block title %}AgriMarket{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 </head>
 <body class="role-{{ current_user.role if current_user.is_authenticated else 'guest' }}">
 
+<!-- PWA Install Banner -->
+<div class="pwa-banner" id="pwaBanner" style="display:none">
+  <span class="pwa-banner-icon">🌾</span>
+  <div class="pwa-banner-text">
+    <strong>Install AgriMarket</strong>
+    <span>Add to home screen for the best experience</span>
+  </div>
+  <button class="pwa-install-btn" id="pwaInstallBtn">Install</button>
+  <button class="pwa-dismiss-btn" id="pwaDismissBtn">✕</button>
+</div>
+
 {% if current_user.is_authenticated %}
+<!-- Offline indicator -->
+<div class="offline-indicator" id="offlineIndicator">📵 You are offline — some features may not work</div>
+
 <!-- Top App Bar -->
 <header class="app-bar">
   <div class="app-bar-left">
@@ -72,6 +91,10 @@
   <a href="{{ url_for('buyer.orders') }}" class="bnav-item {% if request.endpoint in ('buyer.orders','buyer.order_detail') %}active{% endif %}">
     <span class="bnav-icon">📦</span><span class="bnav-label">Orders</span>
   </a>
+  <a href="{{ url_for('msg.inbox') }}" class="bnav-item {% if 'msg.' in request.endpoint %}active{% endif %}" style="position:relative">
+    <span class="bnav-icon">💬</span><span class="bnav-label">Messages</span>
+    <span class="msg-nav-badge" id="msgNavBadge" style="display:none"></span>
+  </a>
   <a href="{{ url_for('notif.index') }}" class="bnav-item {% if request.endpoint == 'notif.index' %}active{% endif %}">
     <span class="bnav-icon">🔔</span><span class="bnav-label">Alerts</span>
   </a>
@@ -118,11 +141,66 @@
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script>
+// Service Worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/static/sw.js')
     .then(() => console.log('SW registered'))
     .catch(e => console.log('SW error', e));
 }
+
+// PWA Install prompt
+let _deferredPrompt = null;
+const pwaBanner     = document.getElementById('pwaBanner');
+const pwaInstallBtn = document.getElementById('pwaInstallBtn');
+const pwaDismissBtn = document.getElementById('pwaDismissBtn');
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  if (!localStorage.getItem('pwa-dismissed')) {
+    pwaBanner && (pwaBanner.style.display = 'flex');
+  }
+});
+
+pwaInstallBtn && pwaInstallBtn.addEventListener('click', () => {
+  pwaBanner.style.display = 'none';
+  if (_deferredPrompt) {
+    _deferredPrompt.prompt();
+    _deferredPrompt.userChoice.then(() => { _deferredPrompt = null; });
+  }
+});
+
+pwaDismissBtn && pwaDismissBtn.addEventListener('click', () => {
+  pwaBanner.style.display = 'none';
+  localStorage.setItem('pwa-dismissed', '1');
+});
+
+window.addEventListener('appinstalled', () => {
+  pwaBanner && (pwaBanner.style.display = 'none');
+  _deferredPrompt = null;
+});
+
+// Poll for unread messages
+{% if current_user.is_authenticated and current_user.role in ('buyer','farmer') %}
+(function(){
+  const badge = document.getElementById('msgNavBadge');
+  if(!badge) return;
+  function poll(){
+    fetch('/messages/api/unread')
+      .then(r => r.json())
+      .then(d => {
+        if(d.count > 0){
+          badge.textContent = d.count;
+          badge.style.display = 'block';
+        } else {
+          badge.style.display = 'none';
+        }
+      });
+  }
+  poll();
+  setInterval(poll, 10000);
+})();
+{% endif %}
 </script>
 </body>
 </html>

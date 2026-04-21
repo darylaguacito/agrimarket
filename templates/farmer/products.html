@@ -19,7 +19,16 @@
       <div class="manage-name">{{ p.name }}</div>
       <div class="muted">{{ p.cat_name or 'General' }} · {{ p.unit }}</div>
       <div class="manage-price">₱{{ "%.2f"|format(p.price|float) }}</div>
-      <div class="manage-stock {% if p.quantity < 10 %}low{% endif %}">Stock: {{ p.quantity }}</div>
+      <div class="manage-stock {{ 'low' if p.quantity <= 10 }}">
+        Stock: {{ p.quantity }}
+        {% if p.quantity <= 10 %}
+        <span class="stock-alert">⚠️ Low Stock</span>
+        {% elif p.quantity == 0 %}
+        <span class="stock-alert">❌ Out of Stock</span>
+        {% else %}
+        <span class="stock-ok">✓ In Stock</span>
+        {% endif %}
+      </div>
     </div>
     <div class="manage-actions">
       <span class="status-pill status-{{ p.status }}">{{ p.status }}</span>

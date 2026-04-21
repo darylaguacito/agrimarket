@@ -1,64 +1,44 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Connect to AgriMarket</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: system-ui, sans-serif; background: #f0fdf4; min-height: 100vh;
-       display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.card { background: white; border-radius: 20px; padding: 2rem; max-width: 400px; width: 100%;
-        box-shadow: 0 8px 32px rgba(0,0,0,.1); text-align: center; }
-.logo { font-size: 3rem; margin-bottom: .5rem; }
-h1 { color: #2E7D32; font-size: 1.5rem; margin-bottom: .25rem; }
-p  { color: #6b7280; font-size: .9rem; margin-bottom: 1.5rem; }
-.qr-wrap { background: #f9fafb; border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem;
-           display: inline-block; }
-.qr-wrap img { width: 200px; height: 200px; display: block; }
-.url-box { background: #E8F5E9; border: 1px solid #A5D6A7; border-radius: 10px;
-           padding: .875rem 1rem; margin-bottom: 1rem; word-break: break-all; }
-.url-label { font-size: .72rem; color: #6b7280; text-transform: uppercase;
-             letter-spacing: .05em; margin-bottom: .25rem; }
-.url-val { font-size: 1rem; font-weight: 700; color: #1B5E20; }
-.steps { text-align: left; background: #f9fafb; border-radius: 10px;
-         padding: 1rem; margin-bottom: 1.5rem; }
-.steps h3 { font-size: .85rem; color: #374151; margin-bottom: .75rem; font-weight: 700; }
-.step { display: flex; gap: .75rem; align-items: flex-start; margin-bottom: .5rem; font-size: .85rem; color: #374151; }
-.step-num { width: 22px; height: 22px; border-radius: 50%; background: #2E7D32; color: white;
-            font-size: .72rem; font-weight: 700; display: flex; align-items: center;
-            justify-content: center; flex-shrink: 0; margin-top: .1rem; }
-.btn { display: block; padding: .75rem; background: #2E7D32; color: white; border: none;
-       border-radius: 10px; font-size: .95rem; font-weight: 700; cursor: pointer;
-       text-decoration: none; width: 100%; }
-.note { font-size: .78rem; color: #9ca3af; margin-top: 1rem; }
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="logo">🌾</div>
-  <h1>AgriMarket</h1>
-  <p>Scan to open on your phone</p>
+{% extends 'base.html' %}
+{% block title %}Install AgriMarket{% endblock %}
+{% block page_title %}📲 Install App{% endblock %}
 
-  <div class="qr-wrap">
-    <img src="/static/qr.png" alt="QR Code">
+{% block content %}
+<div style="padding:5rem 1.5rem 6rem;max-width:480px;margin:0 auto;text-align:center">
+
+  <div style="font-size:4rem;margin-bottom:1rem">🌾</div>
+  <h2 style="color:var(--green);margin-bottom:.5rem">AgriMarket</h2>
+  <p style="color:var(--muted);margin-bottom:2rem;font-size:.95rem">
+    Install this app on your phone for the best experience — works like a native app, no app store needed.
+  </p>
+
+  <!-- QR Code -->
+  <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem;display:inline-block">
+    <img src="{{ url_for('static', filename='qr.png') }}" alt="QR Code" style="width:180px;height:180px">
+    <p style="margin-top:.75rem;font-size:.85rem;color:var(--muted)">Scan to open on your phone</p>
+    <p style="font-size:.8rem;font-weight:600;color:var(--green);word-break:break-all">{{ url }}</p>
   </div>
 
-  <div class="url-box">
-    <div class="url-label">Network URL</div>
-    <div class="url-val">{{ url }}</div>
+  <!-- Android instructions -->
+  <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1rem;text-align:left">
+    <h3 style="font-size:.95rem;margin-bottom:.75rem">🤖 Android (Chrome)</h3>
+    <ol style="padding-left:1.25rem;font-size:.875rem;color:var(--muted);line-height:1.8">
+      <li>Open the URL above in <strong>Chrome</strong></li>
+      <li>Tap the <strong>⋮ menu</strong> (top right)</li>
+      <li>Tap <strong>"Add to Home screen"</strong></li>
+      <li>Tap <strong>Add</strong> — done!</li>
+    </ol>
   </div>
 
-  <div class="steps">
-    <h3>How to connect:</h3>
-    <div class="step"><div class="step-num">1</div><span>Connect your phone to the <strong>same WiFi</strong> as this computer</span></div>
-    <div class="step"><div class="step-num">2</div><span>Open your phone camera and <strong>scan the QR code</strong></span></div>
-    <div class="step"><div class="step-num">3</div><span>Tap the link that appears — AgriMarket opens in your browser</span></div>
-    <div class="step"><div class="step-num">4</div><span>Tap browser menu → <strong>"Add to Home Screen"</strong> to install as an app</span></div>
+  <!-- iOS instructions -->
+  <div style="background:white;border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;text-align:left">
+    <h3 style="font-size:.95rem;margin-bottom:.75rem">🍎 iPhone / iPad (Safari)</h3>
+    <ol style="padding-left:1.25rem;font-size:.875rem;color:var(--muted);line-height:1.8">
+      <li>Open the URL above in <strong>Safari</strong></li>
+      <li>Tap the <strong>Share button</strong> (box with arrow)</li>
+      <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+      <li>Tap <strong>Add</strong> — done!</li>
+    </ol>
   </div>
 
-  <a href="{{ url }}" class="btn">🌐 Open in Browser</a>
-  <p class="note">⚠️ Phone and computer must be on the same WiFi network</p>
 </div>
-</body>
-</html>
+{% endblock %}

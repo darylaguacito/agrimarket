@@ -1,8 +1,8 @@
 import os, uuid
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required, current_user
 from db import query, get_db
-from notifs import push
+from notifs import push, send_sms
 
 driver_bp = Blueprint('driver', __name__, url_prefix='/driver')
 
@@ -61,9 +61,11 @@ def api_deliver(oid):
                   (oid, current_user.id), fetchone=True)
     if not order:
         return jsonify({'error': 'Not found'}), 404
-    note = (request.get_json(silent=True) or {}).get('note', 'Delivered')
+    data  = request.get_json(silent=True) or {}
+    note  = data.get('note', 'Delivered')
+    proof = data.get('proof_path')  # optional base64 or path passed from JS
     db = get_db()
-    db.execute("UPDATE orders SET status='delivered' WHERE id=?", (oid,))
+    db.execute("UPDATE orders SET status='delivered', delivery_proof=? WHERE id=?", (proof, oid))
     db.execute("INSERT INTO order_tracking (order_id,status,note,updated_by) VALUES (?,'delivered',?,?)",
                (oid, note, current_user.id))
     remaining = db.execute(
@@ -74,6 +76,11 @@ def api_deliver(oid):
     db.commit()
     push(order['buyer_id'],  f'✅ Order #{oid} Delivered', 'Your order has been delivered!', 'delivery', oid)
     push(order['farmer_id'], f'✅ Order #{oid} Delivered', 'Driver completed delivery.', 'delivery', oid)
+    buyer = query("SELECT phone, full_name FROM users WHERE id=?", (order['buyer_id'],), fetchone=True)
+    if buyer and buyer.get('phone'):
+        send_sms(buyer['phone'],
+                 f"Hi {buyer['full_name']}, your AgriMarket Order #{oid} has been DELIVERED. "
+                 f"Thank you for shopping with us!")
     return jsonify({'ok': True})
 
 @driver_bp.route('/dashboard')
@@ -147,8 +154,19 @@ def update_delivery(oid):
     if new_status not in ('shipped', 'delivered'):
         flash('Invalid status.', 'error')
         return redirect(url_for('driver.delivery_detail', oid=oid))
+
+    proof_path = order.get('delivery_proof')
+    if new_status == 'delivered':
+        f = request.files.get('proof_photo')
+        if f and f.filename:
+            ext = f.filename.rsplit('.', 1)[-1].lower()
+            if ext in ('jpg', 'jpeg', 'png', 'webp'):
+                fname = f"proof_{uuid.uuid4().hex}.{ext}"
+                f.save(os.path.join(current_app.config['UPLOAD_FOLDER'], fname))
+                proof_path = f"uploads/{fname}"
+
     db = get_db()
-    db.execute("UPDATE orders SET status=? WHERE id=?", (new_status, oid))
+    db.execute("UPDATE orders SET status=?, delivery_proof=? WHERE id=?", (new_status, proof_path, oid))
     db.execute("INSERT INTO order_tracking (order_id,status,note,updated_by) VALUES (?,?,?,?)",
                (oid, new_status, request.form.get('note', ''), current_user.id))
     if new_status == 'delivered':
@@ -156,6 +174,12 @@ def update_delivery(oid):
     db.commit()
     push(order['buyer_id'],  f'🚚 Order #{oid}', f"Status: {new_status.upper()}", 'delivery', oid)
     push(order['farmer_id'], f'📦 Order #{oid}', f"Driver updated: {new_status.upper()}", 'delivery', oid)
+    if new_status == 'delivered':
+        buyer = query("SELECT phone, full_name FROM users WHERE id=?", (order['buyer_id'],), fetchone=True)
+        if buyer and buyer.get('phone'):
+            send_sms(buyer['phone'],
+                     f"Hi {buyer['full_name']}, your AgriMarket Order #{oid} has been DELIVERED. "
+                     f"Thank you for shopping with us!")
     flash('Delivery updated.', 'success')
     return redirect(url_for('driver.delivery_detail', oid=oid))
 

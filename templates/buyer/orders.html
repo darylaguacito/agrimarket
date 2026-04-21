@@ -2,8 +2,17 @@
 {% block title %}My Orders – AgriMarket{% endblock %}
 {% block page_title %}My Orders{% endblock %}
 {% block content %}
+
+<!-- Filter tabs -->
+<div class="filter-tabs">
+  {% for s, label in [('','All'),('pending','Pending'),('confirmed','Confirmed'),('shipped','Shipped'),('delivered','Delivered'),('cancelled','Cancelled')] %}
+  <a href="{{ url_for('buyer.orders', status=s) }}"
+     class="filter-tab {% if request.args.get('status','') == s %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
 {% if not orders %}
-<div class="empty-state" style="margin-top:4rem">
+<div class="empty-state" style="margin-top:2rem">
   <div class="empty-icon">📦</div>
   <h3>No orders yet</h3>
   <a href="{{ url_for('buyer.home') }}" class="btn btn-primary">Start Shopping</a>
@@ -23,6 +32,9 @@
     </div>
     {% if o.driver_name %}
     <div class="order-driver">🚚 {{ o.driver_name }}</div>
+    {% endif %}
+    {% if o.status == 'cancelled' %}
+    <div class="order-cancel-reason muted">❌ Cancelled</div>
     {% endif %}
   </a>
   {% endfor %}

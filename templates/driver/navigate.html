@@ -63,8 +63,8 @@
 <!-- Rerouting toast -->
 <div class="nav-toast" id="rerouteToast" style="display:none">🔄 Rerouting...</div>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leaflet.css') }}">
+<script src="{{ url_for('static', filename='js/leaflet.js') }}"></script>
 
 <script>
 // ── Destination data ───────────────────────────────────────
@@ -377,6 +377,17 @@ window.addEventListener('load', async () => {
     destMarker.setLatLng([destCoords.lat, destCoords.lng]).addTo(map);
     map.setView([destCoords.lat, destCoords.lng], 15);
     document.getElementById('navTitle').textContent = 'Navigating';
+    // Pre-cache tiles around destination
+    if (navigator.onLine && 'caches' in window) {
+      const cache = await caches.open('agrimarket-tiles-v1');
+      const z = 15;
+      const cx = Math.floor((destCoords.lng+180)/360 * Math.pow(2,z));
+      const cy = Math.floor((1-Math.log(Math.tan(destCoords.lat*Math.PI/180)+1/Math.cos(destCoords.lat*Math.PI/180))/Math.PI)/2 * Math.pow(2,z));
+      for (let dx=-2; dx<=2; dx++) for (let dy=-2; dy<=2; dy++) {
+        const url = `https://a.tile.openstreetmap.org/${z}/${cx+dx}/${cy+dy}.png`;
+        cache.add(url).catch(()=>{});
+      }
+    }
   } else {
     document.getElementById('navDirMain').textContent = '⚠️ Could not locate address';
   }

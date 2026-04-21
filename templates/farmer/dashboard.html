@@ -34,6 +34,20 @@
   </div>
 </div>
 
+<!-- Low stock alert banner -->
+{% set low_stock = top_products | selectattr('quantity', 'le', 10) | list %}
+{% if low_stock %}
+<div class="low-stock-banner">
+  <span>⚠️ Low Stock:</span>
+  {% for p in low_stock %}
+  <a href="{{ url_for('farmer.product_form', pid=loop.index) }}" class="low-stock-item">
+    {{ p.name }} ({{ p.quantity }} left)
+  </a>{% if not loop.last %}, {% endif %}
+  {% endfor %}
+  <a href="{{ url_for('farmer.products') }}" class="low-stock-action">Manage →</a>
+</div>
+{% endif %}
+
 <!-- Recent orders -->
 <div class="section">
   <div class="section-header">
@@ -62,12 +76,16 @@
 <!-- Top products -->
 {% if top_products %}
 <div class="section">
-  <div class="section-header"><h3>Top Products</h3></div>
+  <div class="section-header"><h3>Top Products</h3>
+    <a href="{{ url_for('farmer.products') }}" class="see-all">Manage →</a>
+  </div>
   {% for p in top_products %}
   <div class="top-prod-row">
     <span class="top-prod-name">{{ p.name }}</span>
     <span class="top-prod-sold">{{ p.sold }} sold</span>
-    <span class="top-prod-price">₱{{ "%.2f"|format(p.price|float) }}</span>
+    <span class="top-prod-price {% if p.quantity <= 10 %}text-warning{% endif %}">
+      {{ p.quantity }} left
+    </span>
   </div>
   {% endfor %}
 </div>

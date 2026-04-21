@@ -16,6 +16,13 @@
   <div class="info-row"><span>Status</span><span class="status-pill status-{{ order.status }}">{{ order.status|capitalize }}</span></div>
 </div>
 
+<!-- Message buyer -->
+<div class="info-card">
+  <a href="{{ url_for('msg.thread', oid=order.id) }}" class="btn btn-primary btn-full">
+    💬 Message Buyer
+  </a>
+</div>
+
 <div class="info-card">
   <h3>🛒 Items</h3>
   {% for item in items %}

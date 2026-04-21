@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+agrimarket.db
+static/uploads/*.jpg
+static/uploads/*.jpeg
+static/uploads/*.png
+static/uploads/*.gif
+static/uploads/*.webp
+static/qr.png
+.buildozer/
+bin/
+*.log

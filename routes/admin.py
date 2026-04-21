@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from functools import wraps
 from db import query, get_db
-from notifs import push
+from notifs import push, send_sms
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -147,6 +147,11 @@ def assign_driver(oid):
     order = query("SELECT buyer_id,farmer_id FROM orders WHERE id=?", (oid,), fetchone=True)
     push(int(driver_id), '🚚 New Delivery Assigned', f"Order #{oid} assigned.", 'delivery', oid)
     push(order['buyer_id'], f'📦 Order #{oid} Shipped', 'A driver has been assigned.', 'order', oid)
+    buyer = query("SELECT phone, full_name FROM users WHERE id=?", (order['buyer_id'],), fetchone=True)
+    if buyer and buyer.get('phone'):
+        send_sms(buyer['phone'],
+                 f"Hi {buyer['full_name']}, your AgriMarket Order #{oid} is now ON THE WAY! "
+                 f"A driver has been assigned to deliver your order.")
     flash('Driver assigned.', 'success')
     return redirect(url_for('admin.orders'))
 

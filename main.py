@@ -1,86 +1,85 @@
 """
 AgriMarket Android App
-Pure Python - Kivy WebView wrapping the Flask backend
+Kivy WebView wrapping the Flask backend running locally on the device.
 """
-import threading
-import os
-import sys
+import threading, os, sys, time
 
-# ── Ensure the app directory is in path ───────────────────
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, APP_DIR)
 
-# ── Start Flask server in background thread ────────────────
+# ── Start Flask in background ─────────────────────────────
 def start_flask():
     from app import create_app
     flask_app = create_app()
     flask_app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False)
 
-flask_thread = threading.Thread(target=start_flask, daemon=True)
-flask_thread.start()
+threading.Thread(target=start_flask, daemon=True).start()
 
-# ── Kivy WebView App ───────────────────────────────────────
+# ── Kivy App ──────────────────────────────────────────────
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.utils import platform
 
-# Android WebView
+PORT = 5001
+URL  = f'http://127.0.0.1:{PORT}'
+
 if platform == 'android':
     from android.runnable import run_on_ui_thread
     from jnius import autoclass
 
     WebView        = autoclass('android.webkit.WebView')
     WebViewClient  = autoclass('android.webkit.WebViewClient')
-    WebSettings    = autoclass('android.webkit.WebSettings')
     PythonActivity = autoclass('org.kivy.android.PythonActivity')
     LayoutParams   = autoclass('android.view.ViewGroup$LayoutParams')
 
-    class AndroidWebView(BoxLayout):
+    class AgriWebView(BoxLayout):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
-            Clock.schedule_once(self.create_webview, 2)  # wait for Flask to start
+            # Wait for Flask to be ready before loading
+            Clock.schedule_interval(self._wait_for_flask, 0.5)
+
+        def _wait_for_flask(self, dt):
+            import socket
+            try:
+                s = socket.create_connection(('127.0.0.1', PORT), timeout=1)
+                s.close()
+                Clock.unschedule(self._wait_for_flask)
+                self._launch_webview(0)
+            except Exception:
+                pass  # still starting, keep waiting
 
         @run_on_ui_thread
-        def create_webview(self, dt):
+        def _launch_webview(self, dt):
             activity = PythonActivity.mActivity
-            webview  = WebView(activity)
-
-            settings = webview.getSettings()
-            settings.setJavaScriptEnabled(True)
-            settings.setDomStorageEnabled(True)
-            settings.setGeolocationEnabled(True)
-            settings.setAllowFileAccess(True)
-            settings.setMediaPlaybackRequiresUserGesture(False)
-            settings.setUserAgentString(
-                'AgriMarket/1.0 Android Mobile')
-
-            webview.setWebViewClient(WebViewClient())
-            webview.loadUrl('http://127.0.0.1:5001')
-
-            layout = activity.getWindow().getDecorView()
-            layout.addView(webview, LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.MATCH_PARENT
-            ))
+            wv = WebView(activity)
+            s  = wv.getSettings()
+            s.setJavaScriptEnabled(True)
+            s.setDomStorageEnabled(True)
+            s.setGeolocationEnabled(True)
+            s.setAllowFileAccess(True)
+            s.setDatabaseEnabled(True)
+            s.setMediaPlaybackRequiresUserGesture(False)
+            s.setUserAgentString('AgriMarket/1.0 Android')
+            wv.setWebViewClient(WebViewClient())
+            wv.loadUrl(URL)
+            activity.getWindow().getDecorView().addView(
+                wv, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
     class AgriMarketApp(App):
         def build(self):
-            return AndroidWebView()
+            return AgriWebView()
 
-# Desktop fallback (for testing on PC)
 else:
-    from kivy.uix.label import Label
-
+    # Desktop fallback
     class AgriMarketApp(App):
         def build(self):
-            layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
-            layout.add_widget(Label(
-                text='🌾 AgriMarket\n\nOpen http://127.0.0.1:5001\nin your browser',
-                font_size='18sp', halign='center', markup=True
-            ))
-            return layout
+            box = BoxLayout(orientation='vertical', padding=30, spacing=10)
+            box.add_widget(Label(
+                text=f'[b]🌾 AgriMarket[/b]\n\nOpen [color=2E7D32]{URL}[/color]\nin your browser',
+                font_size='18sp', halign='center', markup=True))
+            return box
 
 if __name__ == '__main__':
     AgriMarketApp().run()

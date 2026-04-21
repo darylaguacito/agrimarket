@@ -33,6 +33,19 @@
 </div>
 {% endif %}
 
+<!-- Delivery proof -->
+{% if order.delivery_proof %}
+<div class="info-card">
+  <h3>📸 Delivery Proof</h3>
+  <div class="proof-photo-wrap">
+    <img src="{{ url_for('static', filename=order.delivery_proof) }}"
+         alt="Delivery proof" class="proof-photo-full"
+         onclick="this.classList.toggle('proof-photo-zoom')">
+    <div class="muted" style="margin-top:.5rem;font-size:.78rem">Tap photo to enlarge</div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Order info -->
 <div class="info-card">
   <h3>📦 Order Info</h3>
@@ -41,6 +54,13 @@
   <div class="info-row"><span>Address</span><span>{{ order.shipping_address }}</span></div>
   <div class="info-row"><span>Contact</span><span>{{ order.contact_number }}</span></div>
   <div class="info-row"><span>Total</span><strong>₱{{ "%.2f"|format(order.total_amount|float) }}</strong></div>
+</div>
+
+<!-- Message seller -->
+<div class="info-card">
+  <a href="{{ url_for('msg.thread', oid=order.id) }}" class="btn btn-primary btn-full">
+    💬 Message Seller
+  </a>
 </div>
 
 <!-- Items -->
@@ -75,9 +95,22 @@
   </div>
 </div>
 
+<!-- Cancel -->
+{% if order.status in ('pending','confirmed') %}
+<div class="info-card" style="border:2px solid #FFCDD2">
+  <h3 style="color:#C62828">Cancel Order</h3>
+  <p style="font-size:.875rem;color:#6b7280;margin-bottom:1rem">
+    You can cancel this order while it's pending or confirmed.
+  </p>
+  <a href="{{ url_for('buyer.cancel_order', oid=order.id) }}" class="btn btn-danger btn-full">
+    ❌ Cancel This Order
+  </a>
+</div>
+{% endif %}
+
 <!-- Review -->
 {% if order.status == 'delivered' and not has_review %}
-<div class="info-card review-card">
+<div class="info-card">
   <h3>⭐ Rate this order</h3>
   <form method="post" action="{{ url_for('buyer.submit_review', oid=order.id) }}">
     <div class="star-row" id="starRow">
@@ -89,6 +122,7 @@
   </form>
 </div>
 {% endif %}
+
 <script>
 function setRating(v){
   document.getElementById('ratingVal').value=v;
