@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgriMarket Setup</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:#F9FBF9;display:flex;
+       align-items:center;justify-content:center;min-height:100vh}
+  .card{background:#fff;border-radius:16px;padding:2rem;max-width:340px;
+        width:90%;box-shadow:0 4px 20px rgba(0,0,0,.1);text-align:center}
+  .icon{font-size:3.5rem;margin-bottom:.75rem}
+  h1{color:#2E7D32;font-size:1.4rem;margin-bottom:.4rem}
+  p{color:#6b7280;font-size:.88rem;margin-bottom:1.25rem;line-height:1.5}
+  input{width:100%;padding:.75rem 1rem;border:1.5px solid #E8F5E9;border-radius:10px;
+        font-size:1rem;margin-bottom:.75rem;outline:none}
+  input:focus{border-color:#2E7D32}
+  button{background:#2E7D32;color:#fff;border:none;padding:.8rem;
+         border-radius:999px;font-size:1rem;cursor:pointer;width:100%;font-weight:600}
+  .hint{font-size:.76rem;color:#9ca3af;margin-top:1rem;line-height:1.5}
+  .hint b{color:#555}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🌾</div>
+  <h1>AgriMarket</h1>
+  <p>Enter the IP address of the computer running the AgriMarket server.</p>
+  <input type="text" id="ip" placeholder="e.g. 192.168.1.5" inputmode="decimal" autocomplete="off">
+  <input type="number" id="port" value="5001" placeholder="Port">
+  <button onclick="connect()">Connect</button>
+  <p class="hint">
+    Make sure your phone and PC are on the <b>same WiFi</b>.<br>
+    Run <b>ipconfig</b> on the PC to find the IP address.
+  </p>
+</div>
+<script>
+window.onload = function() {
+  if (window.Android) {
+    var saved = Android.getSavedUrl();
+    if (saved) {
+      var parts = saved.replace('http://','').split(':');
+      document.getElementById('ip').value   = parts[0] || '';
+      document.getElementById('port').value = parts[1] || '5001';
+    }
+  }
+};
+function connect() {
+  var ip   = document.getElementById('ip').value.trim();
+  var port = document.getElementById('port').value.trim() || '5001';
+  if (!ip) { alert('Please enter the server IP address'); return; }
+  var url = 'http://' + ip + ':' + port;
+  if (window.Android) {
+    Android.saveUrl(url);
+  } else {
+    window.location.href = url;
+  }
+}
+</script>
+</body>
+</html>

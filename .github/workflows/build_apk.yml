@@ -24,25 +24,23 @@ jobs:
 
       - name: Install SDK components
         run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Generate Android project
-        run: python3 agrimarket/scripts/gen_android_project.py
-
-      - name: Make gradlew executable
-        run: chmod +x android-app/gradlew
+      - name: Download Gradle wrapper
+        run: |
+          cd agrimarket/android
+          curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradlew -o gradlew
+          chmod +x gradlew
 
       - name: Build debug APK
         run: |
-          cd android-app
-          ./gradlew assembleDebug --no-daemon
+          cd agrimarket/android
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AgriMarket-APK
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          path: agrimarket/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30

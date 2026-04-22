@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cannot Connect</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:#F9FBF9;display:flex;
+       align-items:center;justify-content:center;min-height:100vh;text-align:center}
+  .icon{font-size:4rem;margin-bottom:1rem}
+  h1{color:#2E7D32;margin-bottom:.5rem}
+  p{color:#6b7280;font-size:.9rem;margin-bottom:1.5rem;line-height:1.5}
+  .btns{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+  button{background:#2E7D32;color:#fff;border:none;padding:.7rem 1.5rem;
+         border-radius:999px;font-size:.95rem;cursor:pointer}
+  button.outline{background:#fff;color:#2E7D32;border:1.5px solid #2E7D32}
+</style>
+</head>
+<body>
+<div>
+  <div class="icon">🌾</div>
+  <h1>Cannot connect</h1>
+  <p>Make sure the server is running<br>and your phone is on the same WiFi.</p>
+  <div class="btns">
+    <button onclick="location.reload()">Retry</button>
+    <button class="outline" onclick="if(window.Android)Android.clearUrl();else history.back()">Change Server</button>
+  </div>
+</div>
+</body>
+</html>
