@@ -11,30 +11,32 @@ def create_app():
     app.secret_key = os.getenv('SECRET_KEY', 'dev-secret')
     app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
+    app.config['JWT_SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret')
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False  # tokens don't expire (simplest for mobile)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+    # ── Flask-Login (web UI) ──────────────────────────────
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to continue.'
     login_manager.login_message_category = 'warning'
 
-    # ── SQLite returns dates as strings — add strftime filter ──
+    # ── JWT (Flutter API) ─────────────────────────────────
+    from flask_jwt_extended import JWTManager
+    JWTManager(app)
+
+    # ── Jinja date filter ─────────────────────────────────
     from datetime import datetime
-
     def parse_dt(value, fmt='%b %d, %Y %I:%M %p'):
-        if not value:
-            return ''
-        if hasattr(value, 'strftime'):
-            return value.strftime(fmt)
+        if not value: return ''
+        if hasattr(value, 'strftime'): return value.strftime(fmt)
         for pattern in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d'):
-            try:
-                return datetime.strptime(str(value), pattern).strftime(fmt)
-            except ValueError:
-                continue
+            try: return datetime.strptime(str(value), pattern).strftime(fmt)
+            except ValueError: continue
         return str(value)
-
     app.jinja_env.filters['dt'] = parse_dt
 
+    # ── Web UI blueprints ─────────────────────────────────
     from routes.auth          import auth_bp
     from routes.buyer         import buyer_bp
     from routes.farmer        import farmer_bp
@@ -44,6 +46,20 @@ def create_app():
     from routes.messages      import msg_bp
 
     for bp in (auth_bp, buyer_bp, farmer_bp, driver_bp, admin_bp, notif_bp, msg_bp):
+        app.register_blueprint(bp)
+
+    # ── Flutter REST API blueprints ───────────────────────
+    from routes.api.auth          import api_auth
+    from routes.api.products      import api_products
+    from routes.api.orders        import api_orders
+    from routes.api.cart          import api_cart
+    from routes.api.driver        import api_driver
+    from routes.api.notifications import api_notifs
+    from routes.api.messages      import api_messages
+    from routes.api.admin         import api_admin
+
+    for bp in (api_auth, api_products, api_orders, api_cart,
+               api_driver, api_notifs, api_messages, api_admin):
         app.register_blueprint(bp)
 
     # ── /connect — QR code page for phone access ──
